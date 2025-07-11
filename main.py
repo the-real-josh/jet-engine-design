@@ -1,6 +1,11 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
+# constants and other parameters
+gamma = 1.4
+R = 287.05 # J/kg K
+cp = (gamma*R/(gamma-1))
+cv = (cp-R)
 
 def pol_to_comps(mag, ang, unit='rad'):
     """
@@ -50,7 +55,9 @@ class V_triangle:
         assert isinstance(v_blade, float)
         self.v_blade = v_blade # 52ish?
 
-        # v_inlet = 0, 30
+        assert isinstance(v_inlet, np.ndarray)
+        self.abs_v_inlet = v_inlet
+
         # velocity of the air at the inlet, adjusted for blade velocity
         assert isinstance(v_inlet, np.ndarray), type(v_inlet)
         self.rel_v_inlet = np.array([v_inlet[0] + v_blade,  
@@ -66,8 +73,6 @@ class V_triangle:
         self.v_outlet = np.array([v_inlet[1]*np.tan(np.pi/2 - outlet_angle),
                                   v_inlet[1]])
  
-        print(f'initial angle: 0\neffective angle after transform: { 180/3.14*np.atan2(self.rel_v_inlet[0], self.rel_v_inlet[1])}\nplus turning angle: {180/3.14*outlet_angle}\noutlet velocity: {self.v_outlet}')
-
     def plot(self, title='velocity triangle', verbose=True):
         # for debugging/viewing
 
@@ -81,11 +86,16 @@ class V_triangle:
         ax.set_yscale('linear')
 
         # arrow because quiver is comically broken
-        ax.arrow(0, 0,                     0,                      30,                     color='k', head_width=0.5, head_length=1.0)
+        ax.arrow(0, 0,                     self.abs_v_inlet[0],    self.abs_v_inlet[1],    color='k', head_width=0.5, head_length=1.0)
         ax.arrow(0, 0,                     self.rel_v_inlet[0],    self.rel_v_inlet[1],    color='r', head_width=0.5, head_length=1.0)
         ax.arrow(0, self.rel_v_inlet[1],   self.v_blade,           0,                      color='g', head_width=0.5, head_length=1.0)
         ax.arrow(0, 0,                     self.v_outlet[0],       self.v_outlet[1],       color='b', head_width=0.5, head_length=1.0)
-        fig.suptitle(f'{title}') # broken
+        fig.suptitle(f'{title}') 
+
+        plt.legend([f'absolute inlet v',
+                    f'relative inlet v',
+                    f'blade velocity (1d)',
+                    f'outlet velocity'])
 
         if verbose:
             plt.show()
@@ -94,21 +104,59 @@ class V_triangle:
             plt.clf()
 
 class Stage:
-    def __init__(self, c, rpm, r):
-        # rotor
-        v_blade = (rpm*6.28/3600)*(r) # v = omega*r
+    """inputs: 
+    c - inlet velocity
+    rpm - rpm of the stage
+    r - radius of the section you are examining
+    T_inlet - temperature of the air in the inlet
+    
+    public values:
+        output velocity (self.v2)
+        output 
+        output velocity"""
+    
+    # BUG: need to be able to calculate the static enthalpy at each part of the stage
+    # BUG: need to account for inefficiency
+    def __init__(self, v_inlet, rpm, r, T_inlet):
+        omega_blade = (rpm*6.28/3600)       # speed of rotation in rad/sec
+        v_blade = omega_blade*(r)           # assumes constant r
+        deflection_angle = np.deg2rad(20)   # deflection angle of the blades
+        h_inlet = cp*T_inlet                # specific enthalpy for the gas 
 
-        rotor = V_triangle(c, v_blade, np.deg2rad(20))
-        v2 = rotor.v_outlet()
+        # rotor
+        rotor = V_triangle(v_inlet, v_blade, deflection_angle)
+        v1_5  = rotor.v_outlet()
+        v1_5_abs = ??
+        rotor.plot()
 
         # stator
-        stator = V_triangle(v2, -v_blade, -np.deg2rad(20))
-        v3 = stator.v_outlet()
+        stator = V_triangle(v1_5, -v_blade, -deflection_angle)
+        self.v2 = stator.v_outlet()
+        stator.plot()
 
-    def get_dhn(self):
-        print(f'need to get the de hallard number')
-    def get_stuff(self):
-        print(f'cuh')
+        # euler's equation for turbomachinery
+        self.w = (omega_blade*r*v_inlet - omega_blade*r*v1_5) # specific work (energy per mass flow); NOTE: assuming that this includes all enthalpy added (including velocity)
+
+        # outlet enthalpy and temp
+        h_inter = h_inlet + self.w + 
+        h_outlet = self.w + h_inlet - 0.5*self.v2**2
+        self.T_outlet = h_outlet/cv
+
+        # flow coefficient
+        self.phi = v_inlet/v_blade
+
+        # work/loading coefficient
+
+        # worst-case mach number
+        a = np.sqrt(gamma*R*T_inlet) # maybe T_inlet is wrong, but it certainly will result in a worst-case M
+        M = v1_5 / a # v1.5 is probably wrong
+
+        # degree of reaction
+        h1p5, h1, h2, h1 = None, None, None, None
+        DRXN = (h1p5 - h1) / (h2 - h1)
+
+        # de haller number
+        self.DHN = rotor.v_outlet / rotor.rel_v_inlet
 
 class Compressor:
     # stack the stages together
@@ -120,19 +168,13 @@ class Compressor:
         pass
 
 def main():
-    # calculate dimensions
-    # do something
-
-    # velocity triangles!
-    v_blade = (20000*6.28/3600)*(1.5) # v = omega*r
-
-    rotor = V_triangle(np.array([0.0, 30.0]), v_blade, np.deg2rad(20))
-    v2 = rotor.v_outlet
-    rotor.plot()
+    # terms to define compressor
+    pi_oc = 4.15 # compressure overall pressure ratio
+    m_dot = 20 # air mass flow, kg/sec
+    TIT = 1100 # turbine inlet temperature, kelvin
+    pass
 
 if __name__ == "__main__":
     main()
-pi_oc = 4.15 # compressure overall pressure ratio
-m_dot = 20 # air mass flow, kg/sec
-TIT = 1100 # turbine inlet temperature, kelvin
+
 
