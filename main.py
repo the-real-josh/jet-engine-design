@@ -86,10 +86,10 @@ class V_triangle:
         ax.set_yscale('linear')
 
         # arrow because quiver is comically broken
-        ax.arrow(0, 0,                     self.abs_v_inlet[0],    self.abs_v_inlet[1],    color='k', head_width=0.5, head_length=1.0)
-        ax.arrow(0, 0,                     self.rel_v_inlet[0],    self.rel_v_inlet[1],    color='r', head_width=0.5, head_length=1.0)
-        ax.arrow(0, self.rel_v_inlet[1],   self.v_blade,           0,                      color='g', head_width=0.5, head_length=1.0)
-        ax.arrow(0, 0,                     self.v_outlet[0],       self.v_outlet[1],       color='b', head_width=0.5, head_length=1.0)
+        ax.arrow(0,                         0,                     self.abs_v_inlet[0],    self.abs_v_inlet[1],    color='k', head_width=0.5, head_length=1.0)
+        ax.arrow(0,                         0,                     self.rel_v_inlet[0],    self.rel_v_inlet[1],    color='r', head_width=0.5, head_length=1.0)
+        ax.arrow(self.abs_v_inlet[0],       self.rel_v_inlet[1],   self.v_blade,           0,                      color='g', head_width=0.5, head_length=1.0)
+        ax.arrow(0,                         0,                     self.v_outlet[0],       self.v_outlet[1],       color='b', head_width=0.5, head_length=1.0)
         fig.suptitle(f'{title}') 
 
         plt.legend([f'absolute inlet v',
@@ -114,8 +114,8 @@ class Stage:
         output velocity (self.v2)
         output 
         output velocity"""
-    
-    # BUG: need to be able to calculate the static enthalpy at each part of the stage
+
+    # NOTE: please add real imperfect gas behavior as it can be very easy in python    
     # BUG: need to account for inefficiency
     def __init__(self, v_inlet, rpm, r, T_inlet):
         omega_blade = (rpm*6.28/3600)       # speed of rotation in rad/sec
@@ -123,40 +123,43 @@ class Stage:
         deflection_angle = np.deg2rad(20)   # deflection angle of the blades
         h_inlet = cp*T_inlet                # specific enthalpy for the gas 
 
+        norm = np.linalg.norm
+
+        # chat is this true??
+        # not supposed to be true LOL
+        rot_defl_ang = deflection_angle
+        stat_defl_ang = rot_defl_ang
+
         # rotor
-        rotor = V_triangle(v_inlet, v_blade, deflection_angle)
-        v1_5  = rotor.v_outlet()
-        v1_5_abs = ??
+        rotor = V_triangle(v_inlet, v_blade, rot_defl_ang)
+        v1_5  = rotor.v_outlet
         rotor.plot()
 
         # stator
-        stator = V_triangle(v1_5, -v_blade, -deflection_angle)
-        self.v2 = stator.v_outlet()
+        stator = V_triangle(v1_5, -v_blade, -stat_defl_ang)
+        self.v2 = stator.v_outlet
         stator.plot()
 
         # euler's equation for turbomachinery
         self.w = (omega_blade*r*v_inlet - omega_blade*r*v1_5) # specific work (energy per mass flow); NOTE: assuming that this includes all enthalpy added (including velocity)
 
         # outlet enthalpy and temp
-        h_inter = h_inlet + self.w + 
-        h_outlet = self.w + h_inlet - 0.5*self.v2**2
+        h_outlet = self.w + h_inlet - 0.5*self.v2**2 # account for static, not stagnation
         self.T_outlet = h_outlet/cv
 
         # flow coefficient
         self.phi = v_inlet/v_blade
 
-        # work/loading coefficient
-
         # worst-case mach number
         a = np.sqrt(gamma*R*T_inlet) # maybe T_inlet is wrong, but it certainly will result in a worst-case M
         M = v1_5 / a # v1.5 is probably wrong
 
-        # degree of reaction
-        h1p5, h1, h2, h1 = None, None, None, None
-        DRXN = (h1p5 - h1) / (h2 - h1)
+        # degree of reaction (called Λ, but python and I hate non-roman variable names)
+        # tan(alpha2) - tan(alpha1) = tan(beta1) - tan(beta2)
+        self.DRXN = 1 - (norm(v_inlet) / (2*v_blade))*(np.tan(rot_defl_ang) - np.tan(stat_defl_ang))
 
         # de haller number
-        self.DHN = rotor.v_outlet / rotor.rel_v_inlet
+        self.DHN = norm(rotor.v_outlet) / norm(rotor.rel_v_inlet)
 
 class Compressor:
     # stack the stages together
@@ -168,6 +171,15 @@ class Compressor:
         pass
 
 def main():
+    my_stage = Stage(np.array([0, 30], dtype=float),
+                      15000,
+                        1.5,
+                          300)
+    print(f'stats for my stage:\n\
+          De Hallard number: {my_stage.DHN}\n\
+            Degree of reaction: {my_stage.DRXN}\n\
+                ')
+
     # terms to define compressor
     pi_oc = 4.15 # compressure overall pressure ratio
     m_dot = 20 # air mass flow, kg/sec
