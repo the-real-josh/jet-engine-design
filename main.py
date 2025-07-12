@@ -76,9 +76,9 @@ class V_triangle:
     def plot(self, title='velocity triangle', verbose=True):
         # for debugging/viewing
 
-        print(f'absolute inlet velocity: {'amogus'}\n\
-              relative inlet velocity: {self.rel_v_inlet}\n\
-              outlet velocity: {self.v_outlet}')
+        print(f'absolute inlet velocity: {np.sqrt(np.dot(self.abs_v_inlet, self.abs_v_inlet))}\n\
+        relative inlet velocity: {self.rel_v_inlet}\n\
+        outlet velocity: {self.v_outlet}')
 
         fig, ax = plt.subplots()
 
@@ -117,28 +117,29 @@ class Stage:
 
     # NOTE: please add real imperfect gas behavior as it can be very easy in python    
     # BUG: need to account for inefficiency
-    def __init__(self, v_inlet, rpm, r, T_inlet):
-        omega_blade = (rpm*6.28/3600)       # speed of rotation in rad/sec
+    def __init__(self,
+                 v_inlet: np.ndarray, # meters per second
+                  rpm: float, # revolutions per minute
+                    r: float, # meter
+                      T_inlet:float, # kelvin
+                        p_inlet:float, # pascals
+                         rot_defl_ang: float, # radians
+                           stat_defl_ang: float): # radians
+        
+        omega_blade = (rpm*6.28/3600.0)       # speed of rotation in rad/sec
         v_blade = omega_blade*(r)           # assumes constant r
-        deflection_angle = np.deg2rad(20)   # deflection angle of the blades
         h_inlet = cp*T_inlet                # specific enthalpy for the gas 
+        self.T_inlet = T_inlet
 
         norm = np.linalg.norm
 
-        # chat is this true??
-        # not supposed to be true LOL
-        rot_defl_ang = deflection_angle
-        stat_defl_ang = rot_defl_ang
-
         # rotor
-        rotor = V_triangle(v_inlet, v_blade, rot_defl_ang)
-        v1_5  = rotor.v_outlet
-        rotor.plot()
+        self.rotor = V_triangle(v_inlet, v_blade, rot_defl_ang)
+        v1_5  = self.rotor.v_outlet
 
         # stator
-        stator = V_triangle(v1_5, -v_blade, -stat_defl_ang)
-        self.v2 = stator.v_outlet
-        stator.plot()
+        self.stator = V_triangle(v1_5, -v_blade, -stat_defl_ang)
+        self.v2 = self.stator.v_outlet
 
         # euler's equation for turbomachinery
         self.w = (omega_blade*r*v_inlet - omega_blade*r*v1_5) # specific work (energy per mass flow); NOTE: assuming that this includes all enthalpy added (including velocity)
@@ -159,26 +160,65 @@ class Stage:
         self.DRXN = 1 - (norm(v_inlet) / (2*v_blade))*(np.tan(rot_defl_ang) - np.tan(stat_defl_ang))
 
         # de haller number
-        self.DHN = norm(rotor.v_outlet) / norm(rotor.rel_v_inlet)
+        self.DHN = norm(self.rotor.v_outlet) / norm(self.rotor.rel_v_inlet)
+
+        # outlet temperature
+        self.T_outlet = h_outlet/cp
+
+        # assumes polytropic efficiency = 0.90
+        # no comprendo
+        self.isentropic_p_outlet = (self.T_outlet/T_inlet)**(gamma/(gamma-1))
+        self.poly_n = 0.90
+        self.p_outlet = (self.T_outlet/T_inlet)**(self.poly_n/(self.poly_n-1))
+
+    def plot_triangles(self):
+        self.rotor.plot()
+        self.stator.plot()
+    def print_stats(self):
+        status_text = [f'stats for my stage:',
+        f'De Hallard number: {self.DHN}',
+        f'Degree of reaction: {self.DRXN}',
+        f'flow coefficient: {self.phi}',
+        f'stage work: {self.w}']
+        print('\n'.join(status_text))
+    def plot_stats(self):
+        # use this to plot a graph of all the numbers across the stage or something (idk)
+        assert False, 'function stub'
+        return -1
+    def plot_mollier(self):
+        # use this to plot a mollier diagram of the compresion process
+
+        # need to get s as a function of temperature or enthalpy
+        # need to do this for isentropic and polytropic processes
+        # s_polytrope = lambda T: (self.T_outlet/T_inlet)**(gamma/(gamma-1))
+        # s_isentrope = lambda s:
+
+        # s_points = np.linspace(something)
+        # h_points = s_isentrope(s_points) # or something
+
+        # plt.plot(s_points, h_points)
+        # plt.show()
+
 
 class Compressor:
+    
     # stack the stages together
     # input parameters:
     #   overall pressure ratio
     #   number of stages
     #   
     def __init__(self):
-        pass
-
+        stage_rpm = 15000.0
+        stage1 = Stage(v_inlet=np.array([0.0, 30.0]),
+                    rpm=stage_rpm,
+                     r=1.5,
+                       T_inlet=300.0,
+                        p_inlet=101325.0,
+                         rot_defl_ang=np.deg2rad(20),
+                          stat_defl_ang=np.deg2rad(10))
+        stage1.print_stats()
 def main():
-    my_stage = Stage(np.array([0, 30], dtype=float),
-                      15000,
-                        1.5,
-                          300)
-    print(f'stats for my stage:\n\
-          De Hallard number: {my_stage.DHN}\n\
-            Degree of reaction: {my_stage.DRXN}\n\
-                ')
+    c = Compressor()
 
     # terms to define compressor
     pi_oc = 4.15 # compressure overall pressure ratio
