@@ -7,6 +7,9 @@ R = 287.05 # J/kg K
 cp = (gamma*R/(gamma-1))
 cv = (cp-R)
 
+
+# helper functions
+norm = np.linalg.norm
 def pol_to_comps(mag, ang, unit='rad'):
     """
     polar form to components
@@ -24,7 +27,6 @@ def pol_to_comps(mag, ang, unit='rad'):
     rot = np.array([[np.cos(ang), np.sin(ang)],
                    [-np.sin(ang), np.cos(ang)]]) # basic rotation matrix
     return unit_x @ rot
-
 def comps_to_pol(vec, out_unit='rad'):
     # type checking
     assert isinstance(vec, np.ndarray)
@@ -103,6 +105,7 @@ class V_triangle:
             plt.savefig(f'{title}.png')
             plt.clf()
 
+
 class Stage:
     """inputs: 
     c - inlet velocity
@@ -116,7 +119,6 @@ class Stage:
         output velocity"""
 
     # NOTE: please add real imperfect gas behavior as it can be very easy in python    
-    # BUG: need to account for inefficiency
     def __init__(self,
                  v_inlet: np.ndarray, # meters per second
                   rpm: float, # revolutions per minute
@@ -130,23 +132,33 @@ class Stage:
         v_blade = omega_blade*(r)           # assumes constant r
         h_inlet = cp*T_inlet                # specific enthalpy for the gas 
         self.T_inlet = T_inlet
+        self.p_inlet = p_inlet
 
-        norm = np.linalg.norm
-
-        # rotor
+        # rotor of the stage
         self.rotor = V_triangle(v_inlet, v_blade, rot_defl_ang)
         v1_5  = self.rotor.v_outlet
 
-        # stator
+        # stator of the stage
         self.stator = V_triangle(v1_5, -v_blade, -stat_defl_ang)
         self.v2 = self.stator.v_outlet
 
         # euler's equation for turbomachinery
-        self.w = (omega_blade*r*v_inlet - omega_blade*r*v1_5) # specific work (energy per mass flow); NOTE: assuming that this includes all enthalpy added (including velocity)
+        self.w = (omega_blade*r*norm(v_inlet) - omega_blade*r*norm(v1_5)) # specific work (energy per mass flow); NOTE: assuming that this includes all enthalpy added (including velocity)
 
         # outlet enthalpy and temp
-        h_outlet = self.w + h_inlet - 0.5*self.v2**2 # account for static, not stagnation
-        self.T_outlet = h_outlet/cv
+        # negative self.w because the work the work that is put into the system (negative) ADDS to the energy in the system
+        # why 0.5*(norm(v_inlet)**2 - norm(self.v2))**2? To account for static change, not stagnation
+        h_outlet = -self.w + h_inlet + 0.5*(norm(v_inlet)**2 - norm(self.v2))**2 
+
+        # get outlet temperature by perfect gas laws
+        self.T_outlet = h_outlet/cp
+
+        # get outlet pressures by polytropic gas laws
+        # assumes polytropic efficiency = 0.90
+        # I don't quite understand the reasoning behind polytropic efficiencies
+        self.isentropic_p_outlet = (self.T_outlet/T_inlet)**(gamma/(gamma-1))
+        self.poly_n = 0.90
+        self.p_outlet = (self.T_outlet/T_inlet)**(self.poly_n/(self.poly_n-1))
 
         # flow coefficient
         self.phi = v_inlet/v_blade
@@ -162,42 +174,39 @@ class Stage:
         # de haller number
         self.DHN = norm(self.rotor.v_outlet) / norm(self.rotor.rel_v_inlet)
 
-        # outlet temperature
-        self.T_outlet = h_outlet/cp
-
-        # assumes polytropic efficiency = 0.90
-        # no comprendo
-        self.isentropic_p_outlet = (self.T_outlet/T_inlet)**(gamma/(gamma-1))
-        self.poly_n = 0.90
-        self.p_outlet = (self.T_outlet/T_inlet)**(self.poly_n/(self.poly_n-1))
-
     def plot_triangles(self):
         self.rotor.plot()
         self.stator.plot()
+
     def print_stats(self):
         status_text = [f'stats for my stage:',
         f'De Hallard number: {self.DHN}',
         f'Degree of reaction: {self.DRXN}',
         f'flow coefficient: {self.phi}',
-        f'stage work: {self.w}']
+        f'stage work: {self.w}',
+        f'stage pressure ratio: {self.p_outlet/self.p_inlet}',
+        f'stage temperature ratio: {self.T_outlet/self.T_inlet}']
         print('\n'.join(status_text))
-    def plot_stats(self):
-        # use this to plot a graph of all the numbers across the stage or something (idk)
-        assert False, 'function stub'
-        return -1
+
     def plot_mollier(self):
         # use this to plot a mollier diagram of the compresion process
+        s0 = lambda p,T: cp*np.log(T/273.16) - R*np.log(p/101325.0) + 6608.1 # returns initial "absolute" entropy value in kj/kg K for a perfect gas
 
         # need to get s as a function of temperature or enthalpy
         # need to do this for isentropic and polytropic processes
-        # s_polytrope = lambda T: (self.T_outlet/T_inlet)**(gamma/(gamma-1))
-        # s_isentrope = lambda s:
+        p_polytropic_ratio = lambda T: (T/self.T_inlet)**(self.poly_n/(self.poly_n-1))
+        p_isentropic_ratio = lambda T: (T/self.T_inlet)**(gamma/(gamma-1))
 
-        # s_points = np.linspace(something)
-        # h_points = s_isentrope(s_points) # or something
+        s_isentrope = lambda T: cp*np.log(T/self.T_inlet) - R*np.log(p_isentropic_ratio(T)) + s0(self.p_inlet, self.T_inlet)
+        s_polytrope = lambda T: cp*np.log(T/self.T_inlet) - R*np.log(p_polytropic_ratio(T)) + s0(self.p_inlet, self.T_inlet)
 
-        # plt.plot(s_points, h_points)
-        # plt.show()
+        # y axis points (usually temperature or enthalpy)
+        T_points = np.linspace(self.T_inlet, self.T_outlet, num=50)
+
+        # plot, label, show
+        plt.plot(s_isentrope(T_points), T_points); plt.plot(s_polytrope(T_points), T_points)
+        plt.ylabel(f'Temperature (K)'); plt.xlabel(f'Entropy (Kj/Kg K)'); plt.title(f'Mollier diagram for compression process');  plt.legend([f'isentropic', f'polytropic process with n={self.poly_n}'])
+        plt.show()
 
 
 class Compressor:
@@ -217,10 +226,13 @@ class Compressor:
                          rot_defl_ang=np.deg2rad(20),
                           stat_defl_ang=np.deg2rad(10))
         stage1.print_stats()
+        stage1.plot_mollier()
+        stage1.plot_triangles()
+
 def main():
     c = Compressor()
 
-    # terms to define compressor
+    # terms to define compressor (incorporate later)
     pi_oc = 4.15 # compressure overall pressure ratio
     m_dot = 20 # air mass flow, kg/sec
     TIT = 1100 # turbine inlet temperature, kelvin
