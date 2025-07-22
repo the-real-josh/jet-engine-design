@@ -9,3 +9,11 @@ TLDR: There will be a class inside a class inside a class.
 The reason for this is readability.
 
 # IF YOU HAVE ANY QUESTIONS TEXT ME PLEASE
+
+
+# we are pretty much making a J85-GE-5
+ - 20,000 RPM
+ - 8 stages + 1 IGV
+
+ - https://media.defense.gov/2020/Apr/23/2002287288/-1/-1/0/200417-F-VV067-1152.JPG
+ - https://media.defense.gov/2020/Apr/23/2002287289/-1/-1/0/200417-F-VV067-1153.JPG

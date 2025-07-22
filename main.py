@@ -146,7 +146,7 @@ class Stage:
                          rot_defl_ang: float, # radians
                            stat_defl_ang: float): # radians
         
-        omega_blade = (rpm*6.28/3600.0)         # speed of rotation in rad/sec
+        omega_blade = (rpm*6.28/60.0)         # speed of rotation in rad/sec
         v_blade = omega_blade*(r)               # assumes constant r
         h_inlet = cp*T_inlet                    # specific enthalpy for the gas 
         self.T_inlet = T_inlet                  # stage inlet temperature in k
@@ -166,10 +166,10 @@ class Stage:
         # this will be negative, as the compressor REQUIRES energy to operate 
         self.w = (omega_blade*r*norm(v_inlet) - omega_blade*r*norm(v1_5)) 
 
-        # outlet enthalpy and temp
+        # outlet enthalpy and temp (static), assumes roughly constant axial velocity
         # negative self.w because the work the work that is put into the system (negative) ADDS to the energy in the system
         # why 0.5*(norm(v_inlet)**2 - norm(self.v2))**2? To account for static change, not stagnation
-        h_outlet = -self.w + h_inlet + 0.5*(norm(v_inlet)**2 - norm(self.v2))**2 
+        h_outlet = -self.w + h_inlet # + 0.5*(norm(v_inlet)**2 - norm(self.v2))**2 
 
         # get outlet temperature by perfect gas laws
         self.T_outlet = h_outlet/cp
@@ -177,12 +177,12 @@ class Stage:
         # get outlet pressures by polytropic gas laws
         # assumes polytropic efficiency = 0.90
         # I don't quite understand the reasoning behind polytropic efficiencies
-        self.isentropic_p_outlet = (self.T_outlet/T_inlet)**(gamma/(gamma-1))
+        self.isentropic_p_outlet = self.p_inlet*(self.T_outlet/T_inlet)**(gamma/(gamma-1))
         self.poly_n = 0.90
-        self.p_outlet = (self.T_outlet/T_inlet)**(self.poly_n/(self.poly_n-1))
+        self.p_outlet = self.p_inlet*(self.T_outlet/T_inlet)**(self.poly_n/(self.poly_n-1))
 
         # flow coefficient
-        self.phi = v_inlet/v_blade
+        self.phi = norm(v_inlet)/v_blade
 
         # worst-case mach number
         a = np.sqrt(gamma*R*T_inlet) # maybe T_inlet is wrong, but it certainly will result in a worst-case M
@@ -195,6 +195,11 @@ class Stage:
         # de haller number
         self.DHN = norm(self.rotor.v_outlet) / norm(self.rotor.rel_v_inlet)
 
+        # recommended outlet area (ratio)
+        rho_1 = self.p_inlet  / (R*self.T_inlet)
+        rho_2 = self.p_outlet / (R*self.T_outlet)
+        self.A_ratio = (rho_1 * norm(v_inlet)) / (rho_2 * norm(self.v2))
+
     def plot_triangles(self):
         """Plots the two velocity triangles for the stage"""
         self.rotor.plot()
@@ -204,12 +209,13 @@ class Stage:
         """ prints out important data for the current stage
             returns a string containing all the stats"""
         status_text = [f'stats for my stage:',
-        f'De Hallard number: {self.DHN}',
+        f'De Haller number: {self.DHN}',
         f'Degree of reaction: {self.DRXN}',
         f'flow coefficient: {self.phi}',
         f'stage work: {self.w}',
         f'stage pressure ratio: {self.p_outlet/self.p_inlet}',
-        f'stage temperature ratio: {self.T_outlet/self.T_inlet}']
+        f'stage temperature ratio: {self.T_outlet/self.T_inlet}',
+        f'area ratio: (out/in): {self.A_ratio}']
         if verbose:
             print('\n'.join(status_text))
         return status_text
@@ -253,14 +259,15 @@ class Compressor:
         #       number of stages
         # a while loop (or something) to generate stages until the pressure ratio has been reached and flow has not been reversed (or any other funny business) 
     def __init__(self):
-        stage_rpm = 15000.0
-        stage1 = Stage(v_inlet=np.array([0.0, 30.0]),
+        stage_rpm = 16000
+        # radius ranges from 0.1 m to 0.2 m
+        stage1 = Stage(v_inlet=np.array([0.0, 150.0]),
                     rpm=stage_rpm,
-                     r=1.5,
-                       T_inlet=300.0,
+                     r=0.15,
+                       T_inlet=288.0,
                         p_inlet=101325.0,
-                         rot_defl_ang=np.deg2rad(20),
-                          stat_defl_ang=np.deg2rad(10))
+                         rot_defl_ang=np.deg2rad(12),
+                          stat_defl_ang=np.deg2rad(12))
         stage1.print_stats()
         stage1.plot_mollier()
         stage1.plot_triangles()
@@ -268,11 +275,6 @@ class Compressor:
 def main():
     c = Compressor()
 
-    # terms to define compressor (incorporate later), work in progress
-    pi_oc = 4.15 # compressure overall pressure ratio
-    m_dot = 20 # air mass flow, kg/sec
-    TIT = 1100 # turbine inlet temperature, kelvin
-    pass
 
 # program entry point
 if __name__ == "__main__":
