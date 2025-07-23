@@ -135,6 +135,7 @@ class Stage:
         DRXN                    stage degree of reaction
         DHN                     stage de Haller number
         """
+    __total_instance_counter = 0
 
     # NOTE: please add real imperfect gas behavior as it can be very easy in python    
     def __init__(self,
@@ -146,6 +147,9 @@ class Stage:
                          rot_defl_ang: float, # radians
                            stat_defl_ang: float): # radians
         
+        Stage.__total_instance_counter += 1 # increase the counter of the protected value
+        self.instance_number = Stage.__total_instance_counter
+
         omega_blade = (rpm*6.28/60.0)         # speed of rotation in rad/sec
         v_blade = omega_blade*(r)               # assumes constant r
         h_inlet = cp*T_inlet                    # specific enthalpy for the gas 
@@ -202,13 +206,20 @@ class Stage:
 
     def plot_triangles(self):
         """Plots the two velocity triangles for the stage"""
-        self.rotor.plot()
-        self.stator.plot()
+        self.rotor.plot(title=f'Velocity triangle: {self._inst_name()} rotor')
+        self.stator.plot(title=f'Velocity triangle: {self._inst_name()} stator')
+
+    def _inst_name(self):
+        # for var_name, var_val in globals().items():
+        #     if var_val is self:
+        #         return str(var_name)
+        return f'stage {self.instance_number}'
+
 
     def print_stats(self, verbose=True):
         """ prints out important data for the current stage
             returns a string containing all the stats"""
-        status_text = [f'stats for my stage:',
+        status_text = [f'stats for {self._inst_name}:',
         f'De Haller number: {self.DHN}',
         f'Degree of reaction: {self.DRXN}',
         f'flow coefficient: {self.phi}',
@@ -260,17 +271,32 @@ class Compressor:
         # a while loop (or something) to generate stages until the pressure ratio has been reached and flow has not been reversed (or any other funny business) 
     def __init__(self):
         stage_rpm = 16000
-        # radius ranges from 0.1 m to 0.2 m
+        # radius ranges from 0.1 m to 0.2 m. keep the external radius constant and increase internal radius as indicated by Stage.A2
         stage1 = Stage(v_inlet=np.array([0.0, 150.0]),
                     rpm=stage_rpm,
                      r=0.15,
                        T_inlet=288.0,
                         p_inlet=101325.0,
                          rot_defl_ang=np.deg2rad(12),
-                          stat_defl_ang=np.deg2rad(12))
+                          stat_defl_ang=np.deg2rad(35))
+
+
+        stage2 = Stage(v_inlet=stage1.v2,
+                        rpm=stage_rpm,
+                            r=0.15,
+                                T_inlet=float(stage1.T_outlet),
+                                    p_inlet=float(stage1.p_outlet),
+                                        rot_defl_ang=np.deg2rad(12),
+                                            stat_defl_ang=np.deg2rad(12))
+        
         stage1.print_stats()
-        stage1.plot_mollier()
+        stage2.print_stats()
+
         stage1.plot_triangles()
+        stage2.plot_triangles()
+
+        stage1.plot_mollier(verbose=False)
+        stage2.plot_mollier(verbose=True)
 
 def main():
     c = Compressor()
