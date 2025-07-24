@@ -145,7 +145,8 @@ class Stage:
                       T_inlet:float, # kelvin
                         p_inlet:float, # pascals
                          rot_defl_ang: float, # radians
-                           stat_defl_ang: float): # radians
+                           stat_defl_ang: float, # radians
+                            s_inlet=-1.0):
         
         Stage.__total_instance_counter += 1 # increase the counter of the protected value
         self.instance_number = Stage.__total_instance_counter
@@ -183,7 +184,7 @@ class Stage:
         # I don't quite understand the reasoning behind polytropic efficiencies
         self.isentropic_p_outlet = self.p_inlet*(self.T_outlet/T_inlet)**(gamma/(gamma-1))
         self.poly_n = 0.90
-        self.p_outlet = self.p_inlet*(self.T_outlet/T_inlet)**(self.poly_n/(self.poly_n-1))
+        self.p_outlet = self.p_inlet*(self.T_outlet/T_inlet)**((gamma/(gamma-1))*(self.poly_n))
 
         # flow coefficient
         self.phi = norm(v_inlet)/v_blade
@@ -204,6 +205,13 @@ class Stage:
         rho_2 = self.p_outlet / (R*self.T_outlet)
         self.A_ratio = (rho_1 * norm(v_inlet)) / (rho_2 * norm(self.v2))
 
+
+        if (s_inlet < 0.0):
+            self.s_inlet = cp*np.log(self.T_inlet/273.16) - R*np.log(self.p_inlet/101325.0) + 6608.1
+        else:
+            self.s_inlet = s_inlet
+        self.s_outlet =  cp*np.log(self.T_outlet/self.T_inlet) - R*np.log(self.p_outlet/self.p_inlet) + self.s_inlet        
+
     def plot_triangles(self):
         """Plots the two velocity triangles for the stage"""
         self.rotor.plot(title=f'Velocity triangle: {self._inst_name()} rotor')
@@ -219,16 +227,18 @@ class Stage:
     def print_stats(self, verbose=True):
         """ prints out important data for the current stage
             returns a string containing all the stats"""
-        status_text = [f'stats for {self._inst_name}:',
-        f'De Haller number: {self.DHN}',
-        f'Degree of reaction: {self.DRXN}',
-        f'flow coefficient: {self.phi}',
-        f'stage work: {self.w}',
-        f'stage pressure ratio: {self.p_outlet/self.p_inlet}',
-        f'stage temperature ratio: {self.T_outlet/self.T_inlet}',
+        status_text = [f'stats for {self._inst_name()}:',
+        f'----------------------------',
+        f'De Haller number: {self.DHN:.2f}',
+        f'Degree of reaction: {self.DRXN:.2f}',
+        f'flow coefficient: {self.phi:.2f}',
+        f'stage work: {self.w:.1f}',
+        f'stage pressure: {self.p_inlet:.1f} Pa -> {self.p_outlet:.1f} Pa (Ratio of {self.p_outlet/self.p_inlet:.3f})',
+        f'temperature (inlet->outlet): {self.T_inlet:.2f} K -> {self.T_outlet:.2f} K  (Ratio of {self.T_outlet/self.T_inlet:.3f})',
+        f'entropy (inlet->outlet): {self.s_inlet}->{self.s_outlet} Generated {self.s_outlet - self.s_inlet} J/kg K of entropy',
         f'area ratio: (out/in): {self.A_ratio}']
         if verbose:
-            print('\n'.join(status_text))
+            print('\n'.join(status_text), end='\n\n')
         return status_text
 
     def plot_mollier(self, verbose=True):
@@ -238,22 +248,21 @@ class Stage:
                 If verbose, then the plots are shown and then discarded
                 if not verbose, then plots will be written on the global plt object, allowing other methods to annotate after this method."""
         # use this to plot a mollier diagram of the compresion process
-        s0 = lambda p,T: cp*np.log(T/273.16) - R*np.log(p/101325.0) + 6608.1 # returns initial "absolute" entropy value in kj/kg K for a perfect gas
 
         # need to get s as a function of temperature or enthalpy
         # need to do this for isentropic and polytropic processes
-        p_polytropic_ratio = lambda T: (T/self.T_inlet)**(self.poly_n/(self.poly_n-1))
+        p_polytropic_ratio = lambda T: (T/self.T_inlet)**((gamma/(gamma-1))*(0.9))
         p_isentropic_ratio = lambda T: (T/self.T_inlet)**(gamma/(gamma-1))
 
-        s_isentrope = lambda T: cp*np.log(T/self.T_inlet) - R*np.log(p_isentropic_ratio(T)) + s0(self.p_inlet, self.T_inlet)
-        s_polytrope = lambda T: cp*np.log(T/self.T_inlet) - R*np.log(p_polytropic_ratio(T)) + s0(self.p_inlet, self.T_inlet)
+        s_isentrope = lambda T: cp*np.log(T/self.T_inlet) - R*np.log(p_isentropic_ratio(T)) + self.s_inlet
+        s_polytrope = lambda T: cp*np.log(T/self.T_inlet) - R*np.log(p_polytropic_ratio(T)) + self.s_inlet
 
         # y axis points (usually temperature or enthalpy)
         T_points = np.linspace(self.T_inlet, self.T_outlet, num=50)
 
         # plot, label, show
         plt.plot(s_isentrope(T_points), T_points); plt.plot(s_polytrope(T_points), T_points)
-        plt.ylabel(f'Temperature (K)'); plt.xlabel(f'Entropy (Kj/Kg K)'); plt.title(f'Mollier diagram for compression process')
+        plt.ylabel(f'Temperature (K)'); plt.xlabel(f'Entropy (J/Kg K)'); plt.title(f'Mollier diagram for compression process')
         if verbose:
             plt.legend([f'isentropic', f'polytropic process with n={self.poly_n}'])
             plt.show()
@@ -287,13 +296,17 @@ class Compressor:
                                 T_inlet=float(stage1.T_outlet),
                                     p_inlet=float(stage1.p_outlet),
                                         rot_defl_ang=np.deg2rad(12),
-                                            stat_defl_ang=np.deg2rad(12))
+                                            stat_defl_ang=np.deg2rad(12),
+                                                s_inlet=stage1.s_outlet)
         
         stage1.print_stats()
         stage2.print_stats()
 
-        stage1.plot_triangles()
-        stage2.plot_triangles()
+        # BUG: entropy appears to be decreasing between stages
+
+
+        # stage1.plot_triangles()
+        # stage2.plot_triangles()
 
         stage1.plot_mollier(verbose=False)
         stage2.plot_mollier(verbose=True)
