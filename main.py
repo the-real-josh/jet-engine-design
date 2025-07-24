@@ -278,8 +278,19 @@ class Compressor:
         #       overall pressure ratio
         #       number of stages
         # a while loop (or something) to generate stages until the pressure ratio has been reached and flow has not been reversed (or any other funny business) 
-    def __init__(self):
+    def __init__(self, ):
+
+
+        # first stage dimensions
+        inlet_area = np.pi*(0.2**2 - 0.1**2)
+        hub_radii = [0.1]
+        tip_radii = [0.2]
+
+        # do constant outer diameter
+        hub_radius_from_area = lambda A: np.sqrt((-A+np.pi*tip_radii[0]**2)/np.pi) # assumes constant exterior
+        
         stage_rpm = 16000
+
         # radius ranges from 0.1 m to 0.2 m. keep the external radius constant and increase internal radius as indicated by Stage.A2
         stage1 = Stage(v_inlet=np.array([0.0, 150.0]),
                     rpm=stage_rpm,
@@ -289,6 +300,9 @@ class Compressor:
                          rot_defl_ang=np.deg2rad(12),
                           stat_defl_ang=np.deg2rad(35))
 
+        # area calcs for second stage
+        hub_radii.append(hub_radius_from_area(inlet_area*stage1.A_ratio))
+        tip_radii.append(tip_radii[0])
 
         stage2 = Stage(v_inlet=stage1.v2,
                         rpm=stage_rpm,
@@ -299,17 +313,32 @@ class Compressor:
                                             stat_defl_ang=np.deg2rad(12),
                                                 s_inlet=stage1.s_outlet)
         
+        # area calcs for third stage
+        hub_radii.append(hub_radius_from_area(inlet_area*stage1.A_ratio*stage2.A_ratio))
+        tip_radii.append(tip_radii[0])
+
+
+        # prinout stats
         stage1.print_stats()
         stage2.print_stats()
 
-        # BUG: entropy appears to be decreasing between stages
-
-
+        # # velocity triangles
         # stage1.plot_triangles()
         # stage2.plot_triangles()
 
-        stage1.plot_mollier(verbose=False)
-        stage2.plot_mollier(verbose=True)
+        # # mollier diagrams
+        # stage1.plot_mollier(verbose=False)
+        # stage2.plot_mollier(verbose=True)
+
+        print(f'{hub_radii}'
+              f'{tip_radii}')
+
+        import matplotlib.patches as patches
+        fig, ax = plt.subplots()
+        for i in range(len(hub_radii)):
+            ax.add_patch(patches.Rectangle((i/10, hub_radii[i]), 1/20, (tip_radii[i]-hub_radii[i])))
+        plt.title(f'stages (in meters)')
+        plt.show()
 
 def main():
     c = Compressor()
