@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib.patches as patches
 
 # gas constants for air
 gamma = 1.4
@@ -75,7 +76,7 @@ class V_triangle:
                                      v_inlet[1]])
 
         # calculate relative exit velocity
-        rotation_induced_angle = np.atan2(self.rel_v_inlet[0], self.rel_v_inlet[1]) # angle of attack relative to the blade
+        rotation_induced_angle = np.atan2(self.rel_v_inlet[0], self.rel_v_inlet[1]) # angle of attack relative to the bladehd600 sennheiser
         outlet_angle = rotation_induced_angle + turn_angle
         self.v_outlet = np.array([v_inlet[1]*np.tan(np.pi/2 - outlet_angle),
                                   v_inlet[1]])
@@ -111,7 +112,7 @@ class V_triangle:
             plt.clf()
 
 
-class Stage:
+class Stage_1D:
     """inputs: 
         v_inlet                 vector velocity of inlet, m/s
         rpm                     float compressor's rotational speed in revolutions per minute
@@ -148,8 +149,8 @@ class Stage:
                            stat_defl_ang: float, # radians
                             s_inlet=-1.0):
         
-        Stage.__total_instance_counter += 1 # increase the counter of the protected value
-        self.instance_number = Stage.__total_instance_counter
+        Stage_1D.__total_instance_counter += 1 # increase the counter of the protected value
+        self.instance_number = Stage_1D.__total_instance_counter
 
         omega_blade = (rpm*6.28/60.0)         # speed of rotation in rad/sec
         v_blade = omega_blade*(r)               # assumes constant r
@@ -268,6 +269,12 @@ class Stage:
             plt.show()
 
 
+class Annulus:
+    # implement later??
+    def __init__(self):
+        pass
+
+
 class Compressor:
     # just one stage for now
     # work in progress
@@ -280,7 +287,6 @@ class Compressor:
         # a while loop (or something) to generate stages until the pressure ratio has been reached and flow has not been reversed (or any other funny business) 
     def __init__(self, ):
 
-
         # first stage dimensions
         inlet_area = np.pi*(0.2**2 - 0.1**2)
         hub_radii = [0.1]
@@ -292,9 +298,11 @@ class Compressor:
         stage_rpm = 16000
 
         # radius ranges from 0.1 m to 0.2 m. keep the external radius constant and increase internal radius as indicated by Stage.A2
-        stage1 = Stage(v_inlet=np.array([0.0, 150.0]),
+        
+        # select all values for the first stage
+        stage1 = Stage_1D(v_inlet=np.array([0.0, 150.0]),
                     rpm=stage_rpm,
-                     r=0.15,
+                     r=0.5*(hub_radii[-1]+tip_radii[-1]),
                        T_inlet=288.0,
                         p_inlet=101325.0,
                          rot_defl_ang=np.deg2rad(12),
@@ -303,42 +311,45 @@ class Compressor:
         # area calcs for second stage
         hub_radii.append(hub_radius_from_area(inlet_area*stage1.A_ratio))
         tip_radii.append(tip_radii[0])
-
-        stage2 = Stage(v_inlet=stage1.v2,
+        stage2 = Stage_1D(v_inlet=stage1.v2,
                         rpm=stage_rpm,
-                            r=0.15,
-                                T_inlet=float(stage1.T_outlet),
-                                    p_inlet=float(stage1.p_outlet),
-                                        rot_defl_ang=np.deg2rad(12),
-                                            stat_defl_ang=np.deg2rad(12),
-                                                s_inlet=stage1.s_outlet)
+                            r=0.5*(hub_radii[-1]+tip_radii[-1]), # mean line radius
+                                T_inlet=float(stage1.T_outlet),     # outlet temp from last stage
+                                    p_inlet=float(stage1.p_outlet),     # outlet pressure from last stage
+                                        rot_defl_ang=np.deg2rad(12),        #   NOTE: YOU PICK THIS
+                                            stat_defl_ang=np.deg2rad(12),       # NOTE: YOU PICK THIS
+                                                s_inlet=stage1.s_outlet)            # entropy from last stage
         
         # area calcs for third stage
         hub_radii.append(hub_radius_from_area(inlet_area*stage1.A_ratio*stage2.A_ratio))
         tip_radii.append(tip_radii[0])
 
-
         # prinout stats
         stage1.print_stats()
         stage2.print_stats()
 
-        # # velocity triangles
-        # stage1.plot_triangles()
-        # stage2.plot_triangles()
+        # velocity triangles
+        stage1.plot_triangles()
+        stage2.plot_triangles()
 
-        # # mollier diagrams
-        # stage1.plot_mollier(verbose=False)
-        # stage2.plot_mollier(verbose=True)
+        # mollier diagrams
+        stage1.plot_mollier(verbose=False)
+        stage2.plot_mollier(verbose=True)
 
-        print(f'{hub_radii}'
-              f'{tip_radii}')
-
-        import matplotlib.patches as patches
+        # stage illustrations
         fig, ax = plt.subplots()
         for i in range(len(hub_radii)):
-            ax.add_patch(patches.Rectangle((i/10, hub_radii[i]), 1/20, (tip_radii[i]-hub_radii[i])))
+            ax.add_patch(patches.Rectangle((i/20, hub_radii[i]), 1/40, (tip_radii[i]-hub_radii[i])))
+            ax.add_patch(patches.Rectangle((i/20, -hub_radii[i]-tip_radii[i]), 1/40, tip_radii[i]))
+        m = max(tip_radii + [(0.05*(len(hub_radii)+1))])
+        ax.set_xlim((0, 2*m))
+        ax.set_ylim((-m, m))
         plt.title(f'stages (in meters)')
         plt.show()
+        plt.clf()
+
+
+
 
 def main():
     c = Compressor()
