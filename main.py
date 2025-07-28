@@ -362,34 +362,43 @@ class PrelimCompressor:
             hub_radii.append(hub_radius_from_area(np.pi*(tip_radii[-1]**2 - hub_radii[-1]**2)*stages[-1].A_ratio))
             tip_radii.append(tip_radii[0])
 
+            self.stages = stages
 
-        # prinout stats and triangles
-        for stage in stages:
-            stage.print_stats()
-            stage.plot_triangles()
+        def print_stats(self):
+            # prinout stats and triangles
+            for stage in stages:
+                stage.print_stats()
+                
+                print(f'overall compressor stats:\n'
+                f'total work: {sum([s.w for s in stages]):.2f} J \n'
+                f'pressure ratio: {stages[-1].p_outlet / stages[0].p_inlet} ({stages[0].p_inlet/1000:.2f} kPa --> {stages[-1].p_outlet/1000:.2f})\n'
+                )
+
+
+        def print_triangles(self):
+            for stage in stages:
+                stage.plot_triangles()
         
-        # printout mollier diagrams
-        plt.clf()
-        for stage in stages:
-            stage.plot_mollier(verbose=False)
-        plt.show()
+        def print_mollier_triangles(self):
+            # printout mollier diagrams
+            for stage in stages:
+                stage.plot_mollier(verbose=False)
+            plt.show()
 
-        # 1D stage illustrations
-        fig, ax = plt.subplots()
-        for i in range(len(hub_radii)):
-            ax.add_patch(patches.Rectangle((i/20, hub_radii[i]), 1/40, (tip_radii[i]-hub_radii[i])))
-            ax.add_patch(patches.Rectangle((i/20, -hub_radii[i]-tip_radii[i]), 1/40, tip_radii[i]))
-        m = max(tip_radii + [(0.05*(len(hub_radii)+1))])
-        ax.set_xlim((0, 2*m))
-        ax.set_ylim((-m, m))
-        plt.title(f'1D stages (in meters)')
-        plt.show()
-        plt.clf()
+        def print_illustrations(self):
+            # 1D stage illustrations
+            fig, ax = plt.subplots()
+            for i in range(len(hub_radii)):
+                ax.add_patch(patches.Rectangle((i/20, hub_radii[i]), 1/40, (tip_radii[i]-hub_radii[i])))
+                ax.add_patch(patches.Rectangle((i/20, -hub_radii[i]-tip_radii[i]), 1/40, tip_radii[i]))
+            m = max(tip_radii + [(0.05*(len(hub_radii)+1))])
+            ax.set_xlim((0, 2*m))
+            ax.set_ylim((-m, m))
+            plt.title(f'1D stages (in meters)')
+            plt.show()
+            plt.clf()
 
-        print(f'overall compressor stats:\n'
-              f'total work: {sum([s.w for s in stages]):.2f} J \n'
-              f'pressure ratio: {stages[-1].p_outlet / stages[0].p_inlet} ({stages[0].p_inlet/1000:.2f} kPa --> {stages[-1].p_outlet/1000:.2f})\n'
-              )
+
 
 
 
