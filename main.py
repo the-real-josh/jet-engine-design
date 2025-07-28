@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
+import math
 
 # gas constants for air
 gamma = 1.4
@@ -92,10 +93,10 @@ class V_triangle:
         # plot velocity vectors
         # using plt.arrow because plt.quiver is comically broken
         fig, ax = plt.subplots()
-        ax.arrow(0,                         0,                     self.abs_v_inlet[0],    self.abs_v_inlet[1],    color='k', head_width=0.5, head_length=1.0)
-        ax.arrow(0,                         0,                     self.rel_v_inlet[0],    self.rel_v_inlet[1],    color='r', head_width=0.5, head_length=1.0)
-        ax.arrow(self.abs_v_inlet[0],       self.rel_v_inlet[1],   self.v_blade,           0,                      color='g', head_width=0.5, head_length=1.0)
-        ax.arrow(0,                         0,                     self.v_outlet[0],       self.v_outlet[1],       color='b', head_width=0.5, head_length=1.0)
+        ax.arrow(0,                         0,                     self.abs_v_inlet[0],    self.abs_v_inlet[1],    color='k', head_width=5.0, head_length=5.0)
+        ax.arrow(0,                         0,                     self.rel_v_inlet[0],    self.rel_v_inlet[1],    color='r', head_width=5.0, head_length=5.0)
+        ax.arrow(self.abs_v_inlet[0],       self.rel_v_inlet[1],   self.v_blade,           0,                      color='g', head_width=5.0, head_length=5.0)
+        ax.arrow(0,                         0,                     self.v_outlet[0],       self.v_outlet[1],       color='b', head_width=5.0, head_length=5.0)
         fig.suptitle(f'{title}') 
 
         # legend (in order)
@@ -169,7 +170,8 @@ class Stage_1D:
         # euler's equation for turbomachinery - since the compressor q
         # specific work (energy per mass flow); 
         # NOTE: assuming that this includes all enthalpy added (including velocity)
-        # this will be negative, as the compressor REQUIRES energy to operate 
+        # this will be negative, as the compressor REQUIRES energy to operate
+        # NOTE: this is only valid for constant velocity along the length of the blade (only radially narrow streamtubes) 
         self.w = (omega_blade*r*norm(v_inlet) - omega_blade*r*norm(v1_5)) 
 
         # outlet enthalpy and temp (static), assumes roughly constant axial velocity
@@ -233,11 +235,11 @@ class Stage_1D:
         f'De Haller number: {self.DHN:.2f}',
         f'Degree of reaction: {self.DRXN:.2f}',
         f'flow coefficient: {self.phi:.2f}',
-        f'stage work: {self.w:.1f}',
+        f'stage work: {self.w:.1f} J',
         f'stage pressure: {self.p_inlet:.1f} Pa -> {self.p_outlet:.1f} Pa (Ratio of {self.p_outlet/self.p_inlet:.3f})',
         f'temperature (inlet->outlet): {self.T_inlet:.2f} K -> {self.T_outlet:.2f} K  (Ratio of {self.T_outlet/self.T_inlet:.3f})',
-        f'entropy (inlet->outlet): {self.s_inlet}->{self.s_outlet} Generated {self.s_outlet - self.s_inlet} J/kg K of entropy',
-        f'area ratio: (out/in): {self.A_ratio}']
+        f'entropy (inlet->outlet): {self.s_inlet:.2f}->{self.s_outlet:.2f} Generated {self.s_outlet - self.s_inlet:.2f} J/kg K of entropy',
+        f'area ratio: (out/in): {self.A_ratio:.4f}']
         if verbose:
             print('\n'.join(status_text), end='\n\n')
         return status_text
@@ -272,71 +274,107 @@ class Stage_1D:
 class Annulus:
     # implement later??
     def __init__(self):
+        # get radii (minimum and maximum
+
+        # calculate streamtube inlet area
+
+        # calculate 
         pass
 
-
-class Compressor:
-    # just one stage for now
-    # work in progress
-
-    # my eventual plan:
-        # stack the stages together
-        # input parameters:
-        #       overall pressure ratio
-        #       number of stages
-        # a while loop (or something) to generate stages until the pressure ratio has been reached and flow has not been reversed (or any other funny business) 
-    def __init__(self, ):
-
-        # first stage dimensions
+class TrueCompressor:
+    # incorporate the blading and 3d effects
+    def __init__(self):
+        # define inlet specifications
         inlet_area = np.pi*(0.2**2 - 0.1**2)
-        hub_radii = [0.1]
-        tip_radii = [0.2]
+        inlet_hub_radius = 0.1
+        inlet_tip_radius = 0.2
+
+        compressor_rpm = 16000
+
+        # lists to hold the radii of all the stages
+        hub_radii = [inlet_hub_radius]
+        tip_radii = [inlet_tip_radius]
+
+        # define annuli (streamtubes)
+        strealine_radii = np.array([0.15]) # change to an arbitrarily large np.linspace() later :)
+        for radius in strealine_radii:
+            pass
+
+
+class PrelimCompressor:
+    # a compressor designed with only 1D calculations in mind
+    # useful to get the preliminary area calculations!!
+
+
+    def __init__(self,
+                 inlet_hub_r : float,
+                    inlet_tip_r : float,
+                        comp_rpm : float,
+                            comp_T_inlet : float,
+                                comp_p_inlet : float,
+                                    comp_v_inlet : np.ndarray,
+                                        rotor_defl_angles : np.ndarray,
+                                            stator_defl_angles : np.ndarray):
+
+        # radius ranges from 0.1 m to 0.2 m. keep the external radius constant and increase internal radius as indicated by Stage.A2
+        
+        # first stage dimensions
+        inlet_area = np.pi*(inlet_tip_r**2 - inlet_hub_r**2)
+        hub_radii = [inlet_hub_r]
+        tip_radii = [inlet_tip_r]
 
         # do constant outer diameter
         hub_radius_from_area = lambda A: np.sqrt((-A+np.pi*tip_radii[0]**2)/np.pi) # assumes constant exterior
         
-        stage_rpm = 16000
+        assert len(rotor_defl_angles) == len(stator_defl_angles)
 
-        # radius ranges from 0.1 m to 0.2 m. keep the external radius constant and increase internal radius as indicated by Stage.A2
-        
-        # select all values for the first stage
-        stage1 = Stage_1D(v_inlet=np.array([0.0, 150.0]),
-                    rpm=stage_rpm,
-                     r=0.5*(hub_radii[-1]+tip_radii[-1]),
-                       T_inlet=288.0,
-                        p_inlet=101325.0,
-                         rot_defl_ang=np.deg2rad(12),
-                          stat_defl_ang=np.deg2rad(35))
+        stages = []
 
+        stages.append(Stage_1D(v_inlet=comp_v_inlet,
+                rpm=comp_rpm,
+                    r=0.5*(hub_radii[-1]+tip_radii[-1]),
+                    T_inlet=comp_T_inlet,
+                    p_inlet=comp_p_inlet,
+                        rot_defl_ang=rotor_defl_angles[0],
+                        stat_defl_ang=stator_defl_angles[0]))
+
+        # remove 1st entry (scuffed, ik)
+        rotor_defl_angles = rotor_defl_angles[1:]
+        stator_defl_angles = stator_defl_angles[1:]
         # area calcs for second stage
-        hub_radii.append(hub_radius_from_area(inlet_area*stage1.A_ratio))
+        hub_radii.append(hub_radius_from_area(inlet_area*stages[-1].A_ratio))
         tip_radii.append(tip_radii[0])
-        stage2 = Stage_1D(v_inlet=stage1.v2,
-                        rpm=stage_rpm,
-                            r=0.5*(hub_radii[-1]+tip_radii[-1]), # mean line radius
-                                T_inlet=float(stage1.T_outlet),     # outlet temp from last stage
-                                    p_inlet=float(stage1.p_outlet),     # outlet pressure from last stage
-                                        rot_defl_ang=np.deg2rad(12),        #   NOTE: YOU PICK THIS
-                                            stat_defl_ang=np.deg2rad(12),       # NOTE: YOU PICK THIS
-                                                s_inlet=stage1.s_outlet)            # entropy from last stage
+
+        # generate rest of the stages
+        for rotor_defl_ang, stator_defl_ang in zip(rotor_defl_angles, stator_defl_angles):
+            stages.append(
+                Stage_1D(v_inlet=comp_v_inlet,
+                    rpm=comp_rpm,
+                        r=0.5*(hub_radii[-1]+tip_radii[-1]),
+                            T_inlet=stages[-1].T_outlet,
+                                p_inlet=stages[-1].p_outlet,
+                                    rot_defl_ang=rotor_defl_ang,
+                                        stat_defl_ang=stator_defl_ang,
+                                            s_inlet=stages[-1].s_outlet)
+                                            )
+
+            # area calcs for second stage
+            hub_radii.append(hub_radius_from_area(np.pi*(tip_radii[-1]**2 - hub_radii[-1]**2)*stages[-1].A_ratio))
+            tip_radii.append(tip_radii[0])
+
+
+        # prinout stats and triangles
+        for stage in stages:
+            stage.print_stats()
+            stage.plot_triangles()
         
-        # area calcs for third stage
-        hub_radii.append(hub_radius_from_area(inlet_area*stage1.A_ratio*stage2.A_ratio))
-        tip_radii.append(tip_radii[0])
+        # printout mollier diagrams
+        plt.clf()
+        for stage in stages:
+            stage.plot_mollier(verbose=False)
+        plt.show()
 
-        # prinout stats
-        stage1.print_stats()
-        stage2.print_stats()
-
-        # velocity triangles
-        stage1.plot_triangles()
-        stage2.plot_triangles()
-
-        # mollier diagrams
-        stage1.plot_mollier(verbose=False)
-        stage2.plot_mollier(verbose=True)
-
-        # stage illustrations
+        # 1D stage illustrations
         fig, ax = plt.subplots()
         for i in range(len(hub_radii)):
             ax.add_patch(patches.Rectangle((i/20, hub_radii[i]), 1/40, (tip_radii[i]-hub_radii[i])))
@@ -344,15 +382,27 @@ class Compressor:
         m = max(tip_radii + [(0.05*(len(hub_radii)+1))])
         ax.set_xlim((0, 2*m))
         ax.set_ylim((-m, m))
-        plt.title(f'stages (in meters)')
+        plt.title(f'1D stages (in meters)')
         plt.show()
         plt.clf()
 
+        print(f'overall compressor stats:\n'
+              f'total work: {sum([s.w for s in stages]):.2f} J \n'
+              f'pressure ratio: {stages[-1].p_outlet / stages[0].p_inlet} ({stages[0].p_inlet/1000:.2f} kPa --> {stages[-1].p_outlet/1000:.2f})\n'
+              )
 
 
 
 def main():
-    c = Compressor()
+    c = PrelimCompressor(
+        inlet_hub_r = 0.1,
+        inlet_tip_r = 0.2,
+        comp_rpm = 16000.0,
+        comp_T_inlet = 288.0,
+        comp_p_inlet = 101325.0,
+        comp_v_inlet = np.array([0.0, 150.0]),
+        rotor_defl_angles = np.deg2rad(np.array([12, 12])),
+        stator_defl_angles = np.deg2rad(np.array([35, 12])))
 
 
 # program entry point
