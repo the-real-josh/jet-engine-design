@@ -283,6 +283,7 @@ class Annulus:
 
 class TrueCompressor:
     # incorporate the blading and 3d effects
+    # start with a 1D compressor, then fill in the details
     def __init__(self):
         # define inlet specifications
         inlet_area = np.pi*(0.2**2 - 0.1**2)
@@ -363,46 +364,49 @@ class PrelimCompressor:
             tip_radii.append(tip_radii[0])
 
             self.stages = stages
+            self.hub_radii = hub_radii
+            self.tip_radii = tip_radii
 
-        def print_stats(self):
-            # prinout stats and triangles
-            for stage in stages:
-                stage.print_stats()
-                
-                print(f'overall compressor stats:\n'
-                f'total work: {sum([s.w for s in stages]):.2f} J \n'
-                f'pressure ratio: {stages[-1].p_outlet / stages[0].p_inlet} ({stages[0].p_inlet/1000:.2f} kPa --> {stages[-1].p_outlet/1000:.2f})\n'
-                )
+    def print_stats(self):
+        # prinout stats and triangles
+        for stage in self.stages:
+            stage.print_stats()
+            
+            print(f'overall compressor stats:\n'
+            f'total work: {sum([s.w for s in self.stages]):.2f} J \n'
+            f'pressure ratio: {self.stages[-1].p_outlet / self.stages[0].p_inlet} ({self.stages[0].p_inlet/1000:.2f} kPa --> {self.stages[-1].p_outlet/1000:.2f})\n'
+            )
 
 
-        def print_triangles(self):
-            for stage in stages:
-                stage.plot_triangles()
-        
-        def print_mollier_triangles(self):
-            # printout mollier diagrams
-            for stage in stages:
-                stage.plot_mollier(verbose=False)
-            plt.show()
+    def print_triangles(self):
+        for stage in self.stages:
+            stage.plot_triangles()
+    
+    def print_mollier_triangles(self):
+        # printout mollier diagrams
+        for stage in self.stages:
+            stage.plot_mollier(verbose=False)
+        plt.show()
 
-        def print_illustrations(self):
-            # 1D stage illustrations
-            fig, ax = plt.subplots()
-            for i in range(len(hub_radii)):
-                ax.add_patch(patches.Rectangle((i/20, hub_radii[i]), 1/40, (tip_radii[i]-hub_radii[i])))
-                ax.add_patch(patches.Rectangle((i/20, -hub_radii[i]-tip_radii[i]), 1/40, tip_radii[i]))
-            m = max(tip_radii + [(0.05*(len(hub_radii)+1))])
-            ax.set_xlim((0, 2*m))
-            ax.set_ylim((-m, m))
-            plt.title(f'1D stages (in meters)')
-            plt.show()
-            plt.clf()
+    def print_illustrations(self):
+        # 1D stage illustrations
+        fig, ax = plt.subplots()
+        for i in range(len(self.hub_radii)):
+            ax.add_patch(patches.Rectangle((i/20, self.hub_radii[i]), 1/40, (self.tip_radii[i]-self.hub_radii[i])))
+            ax.add_patch(patches.Rectangle((i/20, -(self.hub_radii[i]+self.tip_radii[i]-self.hub_radii[i])), 1/40, (self.tip_radii[i]-self.hub_radii[i])))
+        m = max(self.tip_radii + [(0.05*(len(self.hub_radii)+1))])
+        ax.set_xlim((0, 2*m))
+        ax.set_ylim((-m, m))
+        plt.title(f'1D stages (in meters)')
+        plt.show()
+        plt.clf()
 
 
 
 
 
 def main():
+    # BUG: stage pressure ratio not high enough?
     c = PrelimCompressor(
         inlet_hub_r = 0.1,
         inlet_tip_r = 0.2,
@@ -410,9 +414,12 @@ def main():
         comp_T_inlet = 288.0,
         comp_p_inlet = 101325.0,
         comp_v_inlet = np.array([0.0, 150.0]),
-        rotor_defl_angles = np.deg2rad(np.array([12, 12])),
-        stator_defl_angles = np.deg2rad(np.array([35, 12])))
-
+        rotor_defl_angles = np.deg2rad(np.array([15, 15, 15, 15, 15, 15, 15, 15])),
+        stator_defl_angles = np.deg2rad(np.array([35, 35, 35, 35, 35, 35, 35, 35])))
+    c.print_stats()
+    c.print_illustrations()
+    c.print_mollier_triangles()
+    c.print_triangles()    
 
 # program entry point
 if __name__ == "__main__":
