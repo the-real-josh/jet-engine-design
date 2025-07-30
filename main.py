@@ -204,7 +204,10 @@ class Stage_1D:
 
         # degree of reaction (called Λ, but python and I hate non-roman variable names)
         # tan(alpha2) - tan(alpha1) = tan(beta1) - tan(beta2)
-        self.DRXN = 1 - (norm(v_inlet) / (2*v_blade))*(np.tan(rot_defl_ang) - np.tan(stat_defl_ang))
+        #                                                       beta   1                beta 2
+        beta1 = np.arctan2(self.rotor.rel_v_inlet[0], self.rotor.rel_v_inlet[1])
+        beta2 = stat_defl_ang
+        self.DRXN = 1 - (norm(v_inlet) / (2*v_blade)) * (np.tan(beta1) - np.tan(beta2))
 
         # de haller number
         self.DHN = norm(self.rotor.v_outlet) / norm(self.rotor.rel_v_inlet)
@@ -297,16 +300,64 @@ class TrueCompressor:
         inlet_hub_radius = 0.1
         inlet_tip_radius = 0.2
 
-        compressor_rpm = 16000
+        compressor_rpm = 25650
+        v_inlet = np.array([0.0, 250.0])
+        p_inlet = 101325.0
+        T_inlet = 298.0
 
         # lists to hold the radii of all the stages
         hub_radii = [inlet_hub_radius]
         tip_radii = [inlet_tip_radius]
 
-        # define annuli (streamtubes)
-        strealine_radii = np.array([0.15]) # change to an arbitrarily large np.linspace() later :)
-        for radius in strealine_radii:
-            pass
+        mean_deflection_angles_rotor = []
+        mean_deflection_angles_stator = []
+
+        K_rotor_per_stage_list = []
+        K_stator_per_stage_list = []
+        # options:
+        # so i can set a central deflection angle and then get the hub and tip to rotate such that the value of cw*R is equal to that of the mean
+
+        def streamlines_r(n, rmin=0.1, rmax=0.2):
+            """ Get a number of streamlines evenly distributed throughout the span of the blade."""
+            return np.convolve(np.linspace(inlet_hub_radius, inlet_tip_radius, num=n+1), np.ones(2), 'valid') / 2  
+
+        for s in [1, 3, 5, 7]: # for an increasing number of streamlines
+            streamline_radii = streamlines_r(s, rmin=0.1, rmax=0.2) 
+            for i in range(s): # for each streamline
+
+                # Calculate constant K based on the mean streamline
+                is_center_streamline_radius = bool(i==math.ceil(s/2))
+                r = streamline_radii[i]
+
+                stages = []
+
+                # get the deflection angles for rotor and stator
+                for j in range(len(mean_deflection_angles_rotor)):       # for every stage
+
+                    if is_center_streamline_radius or s == 1:
+                        rot_defl_ang = mean_deflection_angles_rotor[j]
+                        stat_defl_ang = mean_deflection_angles_stator[j]
+                    else:
+                        # use free vortex design - K is constant a stage's blade's span (across multiple streamlines)
+                        stat_defl_ang = K_rotor_per_stage_list[i]/r
+                        rot_defl_ang = K_stator_per_stage_list[i]/r
+
+                        if j != 1: # if it is not the first stage
+                            _v = stages[-1].v2
+                            _rpm = compressor_rpm
+                        else:
+                            _v = v_inlet
+                            _rpm = compressor_rpm   
+
+
+                        stages.append( Stage_1D(v_inlet=_v, # meters per second
+                            rpm=_rpm, # revolutions per minute
+                                r=r, # meter
+                                T_inlet=T_inlet, # kelvin
+                                    p_inlet=p_inlet, # pascals
+                                    rot_defl_ang=4.0, # radians
+                                    stat_defl_ang=4.90, # radians
+                                        s_inlet=-1.0))
 
 
 class PrelimCompressor:
@@ -356,7 +407,7 @@ class PrelimCompressor:
         # generate rest of the stages
         for rotor_defl_ang, stator_defl_ang in zip(rotor_defl_angles, stator_defl_angles):
             stages.append(
-                Stage_1D(v_inlet=comp_v_inlet,
+                Stage_1D(v_inlet=stages[-1].v2,
                     rpm=comp_rpm,
                         r=0.5*(hub_radii[-1]+tip_radii[-1]),
                             T_inlet=stages[-1].T_outlet,
@@ -413,7 +464,6 @@ class PrelimCompressor:
 
 
 def main():
-    # BUG: stage pressure ratio not high enough?
     c = PrelimCompressor(
         inlet_hub_r = 0.1,
         inlet_tip_r = 0.2,
@@ -422,10 +472,11 @@ def main():
         comp_p_inlet = 101325.0,
         comp_v_inlet = np.array([0.0, 250.0]),
         rotor_defl_angles = np.deg2rad(np.array([-10 for i in range(5)])),
-        stator_defl_angles = np.deg2rad(np.array([10 for i in range(5)])))
-    c.print_triangles()    
+        stator_defl_angles = np.deg2rad(np.array([-20 for i in range(5)])))
     c.print_stats()
     c.print_illustrations()
+    input()
+    c.print_triangles()    
     c.print_mollier_triangles()
 
 # program entry point
