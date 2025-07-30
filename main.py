@@ -280,16 +280,75 @@ class Stage_1D:
             plt.legend([f'isentropic', f'polytropic process with n={self.poly_n}'])
             plt.show()
 
+class TrueCompressor2:
+    def __init__(self) -> None:
+        # inlet parameters (same as before)
+        comp_rpm = 25650.0
+        comp_T_inlet = 288.0
+        comp_p_inlet = 101325.0
+        comp_v_inlet = np.array([0.0, 250.0])
 
-class Annulus:
-    # implement later??
-    def __init__(self):
-        # get radii (minimum and maximum
 
-        # calculate streamtube inlet area
+        meanline_rotor_defl_angles = np.deg2rad(np.array([-10 for i in range(5)]))
+        meanline_stator_defl_angles = np.deg2rad(np.array([-20 for i in range(5)]))
 
-        # calculate 
-        pass
+
+        # rudimentary minline calculations
+        c = PrelimCompressor(
+            inlet_hub_r = 0.1,
+            inlet_tip_r = 0.2,
+            comp_rpm = comp_rpm,
+            comp_T_inlet = comp_T_inlet,
+            comp_p_inlet = comp_p_inlet,
+            comp_v_inlet = comp_v_inlet,
+            rotor_defl_angles = meanline_rotor_defl_angles,
+            stator_defl_angles = meanline_stator_defl_angles)
+        
+        # get the radii to generate good streamlines
+        hub_radii = c.hub_radii
+        tip_radii = c.tip_radii
+        meanline_K = c.meanline_K # get the constant C_w * R = K from the minline calcs!!
+
+        # re-generate stages with blading
+        for s in range(len(meanline_rotor_defl_angles)): # for every stage
+
+            # generate some streamlines
+            def streamlines_r(n, rmin=0.1, rmax=0.2):
+                """ Get a number of streamlines evenly distributed throughout the span of the blade."""
+                return np.convolve(np.linspace(hub_radii[s], tip_radii[s], num=n+1), np.ones(2), 'valid') / 2  
+            radii = streamlines_r(3)
+            for r in radii:
+                stages = []
+
+                stages.append(Stage_1D(v_inlet=comp_v_inlet,
+                        rpm=comp_rpm,
+                            r=r,
+                            T_inlet=comp_T_inlet,
+                            p_inlet=comp_p_inlet,
+                                rot_defl_ang=rotor_defl_angles[0], # take in mean deflection angle
+                                stat_defl_ang=stator_defl_angles[0])) # how to get the whirl velocity between rotor and stator/?
+
+                # remove 1st entry (scuffed, ik)
+                rotor_defl_angles = rotor_defl_angles[1:]
+                stator_defl_angles = stator_defl_angles[1:]
+                # area calcs for second stage
+                hub_radii.append(hub_radius_from_area(inlet_area*stages[-1].A_ratio))
+                tip_radii.append(tip_radii[0])
+
+                # generate rest of the stages
+                for rotor_defl_ang, stator_defl_ang in zip(rotor_defl_angles, stator_defl_angles):
+                    stages.append(
+                        Stage_1D(v_inlet=stages[-1].v2,
+                            rpm=comp_rpm,
+                                r=r,
+                                    T_inlet=stages[-1].T_outlet,
+                                        p_inlet=stages[-1].p_outlet,
+                                            rot_defl_ang=rotor_defl_ang,
+                                                stat_defl_ang=stator_defl_ang,
+                                                    s_inlet=stages[-1].s_outlet)
+                                                    )
+
+
 
 class TrueCompressor:
     # incorporate the blading and 3d effects
