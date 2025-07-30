@@ -77,16 +77,16 @@ class V_triangle:
                                      v_inlet[1]])
 
         # calculate relative exit velocity
-        rotation_induced_angle = np.atan2(self.rel_v_inlet[0], self.rel_v_inlet[1]) # angle of attack relative to the bladehd600 sennheiser
+        rotation_induced_angle = np.atan2(self.rel_v_inlet[0], self.rel_v_inlet[1]) # angle of attack relative to the blade
         outlet_angle = rotation_induced_angle + turn_angle
-        self.v_outlet = np.array([v_inlet[1]*np.tan(np.pi/2 - outlet_angle),
+        self.v_outlet = np.array([v_inlet[1]*np.tan(outlet_angle),
                                   v_inlet[1]])
  
     def plot(self, title='velocity triangle', verbose=True):
         """ for debugging/viewing
             Note that velocity triangles are drawn upside down in here for convenience."""
 
-        print(f'absolute inlet velocity: {np.sqrt(np.dot(self.abs_v_inlet, self.abs_v_inlet))}\n\
+        print(f'prior frame of reference v: {np.sqrt(np.dot(self.abs_v_inlet, self.abs_v_inlet))}\n\
         relative inlet velocity: {self.rel_v_inlet}\n\
         outlet velocity: {self.v_outlet}')
 
@@ -100,10 +100,10 @@ class V_triangle:
         fig.suptitle(f'{title}') 
 
         # legend (in order)
-        plt.legend([f'absolute inlet v',
+        plt.legend([f'prior frame of reference v',
                     f'relative inlet v',
                     f'blade velocity (1d)',
-                    f'outlet velocity'])
+                    f'relative outlet velocity'])
 
         # save graphs or view graphs depending on parameter "verbose"
         if verbose:
@@ -160,11 +160,13 @@ class Stage_1D:
         self.p_inlet = p_inlet                  # stage inlet pressure in pa
 
         # rotor of the stage
+        self.v_inlet = v_inlet
         self.rotor = V_triangle(v_inlet, v_blade, rot_defl_ang)
-        v1_5  = self.rotor.v_outlet
+        v1_5_rel  = self.rotor.v_outlet #  << this is relative to the moving blade!!
 
         # stator of the stage
-        self.stator = V_triangle(v1_5, -v_blade, -stat_defl_ang)
+        self.stator = V_triangle(v1_5_rel, -v_blade, -stat_defl_ang)
+        v_1_5_true = self.stator.rel_v_inlet
         self.v2 = self.stator.v_outlet
 
         # euler's equation for turbomachinery - since the compressor q
@@ -172,7 +174,11 @@ class Stage_1D:
         # NOTE: assuming that this includes all enthalpy added (including velocity)
         # this will be negative, as the compressor REQUIRES energy to operate
         # NOTE: this is only valid for constant velocity along the length of the blade (only radially narrow streamtubes) 
-        self.w = (omega_blade*r*norm(v_inlet) - omega_blade*r*norm(v1_5)) 
+        self.w = (omega_blade*r*norm(v_inlet) - omega_blade*r*norm(v_1_5_true)) 
+
+        # print(f'{self._inst_name()} euler turbo equation:\n'
+        #       f'({omega_blade}*{r}*norm({v_inlet}) - {omega_blade}*{r}*norm({v1_5}))')
+        # input()
 
         # outlet enthalpy and temp (static), assumes roughly constant axial velocity
         # negative self.w because the work the work that is put into the system (negative) ADDS to the energy in the system
@@ -186,7 +192,7 @@ class Stage_1D:
         # assumes polytropic efficiency = 0.90
         # I don't quite understand the reasoning behind polytropic efficiencies
         self.isentropic_p_outlet = self.p_inlet*(self.T_outlet/T_inlet)**(gamma/(gamma-1))
-        self.poly_n = 0.90
+        self.poly_n = 0.89
         self.p_outlet = self.p_inlet*(self.T_outlet/T_inlet)**((gamma/(gamma-1))*(self.poly_n))
 
         # flow coefficient
@@ -194,7 +200,7 @@ class Stage_1D:
 
         # worst-case mach number
         a = np.sqrt(gamma*R*T_inlet) # maybe T_inlet is wrong, but it certainly will result in a worst-case M
-        M = v1_5 / a # v1.5 is probably wrong
+        M = v1_5_rel / a # v1.5 is probably wrong
 
         # degree of reaction (called Λ, but python and I hate non-roman variable names)
         # tan(alpha2) - tan(alpha1) = tan(beta1) - tan(beta2)
@@ -235,7 +241,8 @@ class Stage_1D:
         f'De Haller number: {self.DHN:.2f}',
         f'Degree of reaction: {self.DRXN:.2f}',
         f'flow coefficient: {self.phi:.2f}',
-        f'stage work: {self.w:.1f} J',
+        f'stage work: {self.w:.1f} J/(kg*sec)',
+        f'mass flux: {self.p_inlet/(R*self.T_inlet)*norm(self.v_inlet)}',
         f'stage pressure: {self.p_inlet:.1f} Pa -> {self.p_outlet:.1f} Pa (Ratio of {self.p_outlet/self.p_inlet:.3f})',
         f'temperature (inlet->outlet): {self.T_inlet:.2f} K -> {self.T_outlet:.2f} K  (Ratio of {self.T_outlet/self.T_inlet:.3f})',
         f'entropy (inlet->outlet): {self.s_inlet:.2f}->{self.s_outlet:.2f} Generated {self.s_outlet - self.s_inlet:.2f} J/kg K of entropy',
@@ -410,16 +417,16 @@ def main():
     c = PrelimCompressor(
         inlet_hub_r = 0.1,
         inlet_tip_r = 0.2,
-        comp_rpm = 16000.0,
+        comp_rpm = 25650.0,
         comp_T_inlet = 288.0,
         comp_p_inlet = 101325.0,
-        comp_v_inlet = np.array([0.0, 150.0]),
-        rotor_defl_angles = np.deg2rad(np.array([15, 15, 15, 15, 15, 15, 15, 15])),
-        stator_defl_angles = np.deg2rad(np.array([35, 35, 35, 35, 35, 35, 35, 35])))
+        comp_v_inlet = np.array([0.0, 250.0]),
+        rotor_defl_angles = np.deg2rad(np.array([-10 for i in range(5)])),
+        stator_defl_angles = np.deg2rad(np.array([10 for i in range(5)])))
+    c.print_triangles()    
     c.print_stats()
     c.print_illustrations()
     c.print_mollier_triangles()
-    c.print_triangles()    
 
 # program entry point
 if __name__ == "__main__":
