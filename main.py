@@ -182,12 +182,14 @@ class Stage_1D:
         self.v_inlet = v_inlet
         if rot_defl_ang is None:
             rot_defl_ang = turning_angle(self.v_inlet, rot_K/r, v_blade) # type: ignore
+        self.rot_defl_ang = rot_defl_ang
         self.rotor = V_triangle(v_inlet, v_blade, rot_defl_ang)
         v1_5_rel  = self.rotor.v_outlet #  << this is relative to the moving blade!!
 
         # stator of the stage
         if stat_defl_ang is None:
             stat_defl_ang = turning_angle(v1_5_rel, stat_K/r, -v_blade) # type: ignore
+        self.stat_defl_ang = stat_defl_ang
         self.stator = V_triangle(v1_5_rel, -v_blade, -stat_defl_ang)
         v_1_5_true = self.stator.rel_v_inlet
         self.v2 = self.stator.v_outlet
@@ -335,37 +337,44 @@ class TrueCompressor2:
         meanline_rotor_K = c.meanline_rotor_K 
         meanline_stator_K = c.meanline_stator_K
 
+        # generate some streamlines
+        def streamlines_r(n, rmin=0.1, rmax=0.2):
+            """ Get a number of streamlines evenly distributed throughout the span of the blade."""
+            return np.convolve(np.linspace(hub_radii[s_num], tip_radii[s_num], num=n+1), np.ones(2), 'valid') / 2  
+
+        radii = np.array([streamlines_r(3, rmin=hub_r, rmax=tip_r) for hub_r, tip_r in zip(hub_radii, tip_radii)]) # generates a (ndarray) list(len=num of stages, ) of lists streamlines 
+        stages = np.array([[None for i in range(len(radii[0]))] for j in range(len(radii))], dtype=object)
+
         # re-generate stages with blading
-        for s in range(len(meanline_rotor_defl_angles)): # for every stage
+        for s_num in range(len(meanline_rotor_defl_angles)): # for every stage
 
-            # generate some streamlines
-            def streamlines_r(n, rmin=0.1, rmax=0.2):
-                """ Get a number of streamlines evenly distributed throughout the span of the blade."""
-                return np.convolve(np.linspace(hub_radii[s], tip_radii[s], num=n+1), np.ones(2), 'valid') / 2  
-            radii = streamlines_r(3)
-            for r in radii:
-                stages = []
 
-                stages.append(Stage_1D(v_inlet=comp_v_inlet,
-                        rpm=comp_rpm,
-                            r=r,
-                            T_inlet=comp_T_inlet,
-                            p_inlet=comp_p_inlet,
-                               rot_K=meanline_rotor_K[0], # take in mean deflection angle
-                                stat_defl_ang=meanline_stator_K[0])) # how to get the whirl velocity between rotor and stator/?
+            for r_num in range(len(radii)):
+                r = radii[s_num, r_num]
 
-                # generate rest of the stages
-                for rot_K, stat_K in zip(meanline_rotor_K, meanline_stator_K):
-                    stages.append(
-                        Stage_1D(v_inlet=stages[-1].v2,
+                if s_num == 0: # for first stage
+                    stages[s_num, r_num] = (Stage_1D(v_inlet=comp_v_inlet,
                             rpm=comp_rpm,
                                 r=r,
-                                    T_inlet=stages[-1].T_outlet,
-                                        p_inlet=stages[-1].p_outlet,
-                                            rot_K=rot_K,
-                                                stat_K=stat_K,
-                                                    s_inlet=stages[-1].s_outlet)
-                                                    )
+                                T_inlet=comp_T_inlet,
+                                p_inlet=comp_p_inlet,
+                                rot_K=meanline_rotor_K[0], # take in mean deflection angle
+                                    stat_defl_ang=meanline_stator_K[0])) # how to get the whirl velocity between rotor and stator/?
+
+                elif s_num >=1: # for all other stages
+                    for rot_K, stat_K in zip(meanline_rotor_K, meanline_stator_K):
+                        stages.append(
+                            Stage_1D(v_inlet=stages[-1].v2,
+                                rpm=comp_rpm,
+                                    r=r,
+                                        T_inlet=stages[-1].T_outlet,
+                                            p_inlet=stages[-1].p_outlet,
+                                                rot_K=rot_K,
+                                                    stat_K=stat_K,
+                                                        s_inlet=stages[-1].s_outlet)
+                                                        )
+                else:
+                    print(f'mald')
     # TODO:         
     # return the blading curves (obtain the values)
     # calculate the updated areas based on the sums of the streamlines
