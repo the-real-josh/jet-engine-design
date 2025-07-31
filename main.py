@@ -166,7 +166,7 @@ class Stage_1D:
                                 s_inlet=-1.0):
         
         # ensure that either constant whirl or a set deflection has been defined.
-        assert sum([int(bool(rot_K is None and stat_K is None)),  int(bool(rot_K is None and stat_K is None))]) == 1
+        assert sum([int(bool(rot_K is None and stat_K is None)),  int(bool(rot_defl_ang is None and stat_defl_ang is None))]) == 1, f"need one of two to be true: defined K {rot_K, stat_K} OR defined defl {rot_defl_ang, stat_defl_ang}"
 
         Stage_1D.__total_instance_counter += 1 # increase the counter of the protected value
         self.instance_number = Stage_1D.__total_instance_counter
@@ -180,6 +180,7 @@ class Stage_1D:
 
         # rotor of the stage
         self.v_inlet = v_inlet
+
         if rot_defl_ang is None:
             rot_defl_ang = turning_angle(self.v_inlet, rot_K/r, v_blade) # type: ignore
         self.rot_defl_ang = rot_defl_ang
@@ -191,19 +192,32 @@ class Stage_1D:
             stat_defl_ang = turning_angle(v1_5_rel, stat_K/r, -v_blade) # type: ignore
         self.stat_defl_ang = stat_defl_ang
         self.stator = V_triangle(v1_5_rel, -v_blade, -stat_defl_ang)
-        v_1_5_true = self.stator.rel_v_inlet
+        self.v_1_5_true = self.stator.rel_v_inlet # confirm with triangles to make sure this is really true
         self.v2 = self.stator.v_outlet
+
+        if (rot_K is not None) and (stat_K is not None):
+            print(
+                f'debugging for stage {-1}: 『 rotor 』------------------\n '
+                f'your rot_K is {rot_K}\n'
+                f'your radius is {r} m\n'
+                f'therefore, your whirl velocity (C_w) must be {rot_K / r} m/s\n'
+                f'according to {turning_angle}, your turning angle should be {turning_angle(self.v_inlet, rot_K/r, v_blade)} radians, or {np.rad2deg(turning_angle(self.v_inlet, rot_K/r, v_blade))} degrees.\n'
+                f'\n'
+                f'«« stator »»\n'
+                f'your stat_K is {stat_K}\n'
+                f'your radius is still {r} m (i know, crazy)\n'
+                f'therefore, your whirl velocity (C_w) must be {stat_K / r} m/s\n'
+                f'according to {turning_angle}, your turning angle should be { turning_angle(v1_5_rel, stat_K/r, -v_blade)} radians, or {np.rad2deg(turning_angle(v1_5_rel, stat_K/r, -v_blade))} degrees.\n'
+            )
+        else:
+            print(f'meanline stage {self.instance_number} - radius is {r}')
 
         # euler's equation for turbomachinery - since the compressor q
         # specific work (energy per mass flow); 
         # NOTE: assuming that this includes all enthalpy added (including velocity)
         # this will be negative, as the compressor REQUIRES energy to operate
         # NOTE: this is only valid for constant velocity along the length of the blade (only radially narrow streamtubes) 
-        self.w = (omega_blade*r*norm(v_inlet) - omega_blade*r*norm(v_1_5_true)) 
-
-        # print(f'{self._inst_name()} euler turbo equation:\n'
-        #       f'({omega_blade}*{r}*norm({v_inlet}) - {omega_blade}*{r}*norm({v1_5}))')
-        # input()
+        self.w = (omega_blade*r*norm(v_inlet) - omega_blade*r*norm(self.v_1_5_true)) 
 
         # outlet enthalpy and temp (static), assumes roughly constant axial velocity
         # negative self.w because the work the work that is put into the system (negative) ADDS to the energy in the system
@@ -305,7 +319,7 @@ class Stage_1D:
             plt.legend([f'isentropic', f'polytropic process with n={self.poly_n}'])
             plt.show()
 
-class TrueCompressor2:
+class TrueCompressor:
     def __init__(self) -> None:
         # inlet parameters (same as before)
         comp_rpm = 25650.0
@@ -314,8 +328,8 @@ class TrueCompressor2:
         comp_v_inlet = np.array([0.0, 250.0])
 
 
-        meanline_rotor_defl_angles = np.deg2rad(np.array([-10 for i in range(5)]))
-        meanline_stator_defl_angles = np.deg2rad(np.array([-20 for i in range(5)]))
+        meanline_rotor_defl_angles = -np.deg2rad(np.array([20, 18, 17, 16, 14]))
+        meanline_stator_defl_angles = -np.deg2rad(np.array([35, 35, 35, 35, 35]))
 
 
         # rudimentary minline calculations
@@ -328,7 +342,11 @@ class TrueCompressor2:
             comp_v_inlet = comp_v_inlet,
             rotor_defl_angles = meanline_rotor_defl_angles,
             stator_defl_angles = meanline_stator_defl_angles)
-        
+        c.print_stats()
+        c.print_illustrations()
+        # c.print_triangles()    
+        # c.print_mollier_triangles()
+
         # get the mean radius of each of the stages to generate good streamlines
         hub_radii = c.hub_radii
         tip_radii = c.tip_radii
@@ -340,16 +358,17 @@ class TrueCompressor2:
         # generate some streamlines
         def streamlines_r(n, rmin=0.1, rmax=0.2):
             """ Get a number of streamlines evenly distributed throughout the span of the blade."""
-            return np.convolve(np.linspace(hub_radii[s_num], tip_radii[s_num], num=n+1), np.ones(2), 'valid') / 2  
+            return np.convolve(np.linspace(rmin, rmax, num=n+1), np.ones(2), 'valid') / 2
 
         radii = np.array([streamlines_r(3, rmin=hub_r, rmax=tip_r) for hub_r, tip_r in zip(hub_radii, tip_radii)]) # generates a (ndarray) list(len=num of stages, ) of lists streamlines 
+        
         stages = np.array([[None for i in range(len(radii[0]))] for j in range(len(radii))], dtype=object)
 
         # re-generate stages with blading
         for s_num in range(len(meanline_rotor_defl_angles)): # for every stage
 
 
-            for r_num in range(len(radii)):
+            for r_num in range(len(radii[0])):
                 r = radii[s_num, r_num]
 
                 if s_num == 0: # for first stage
@@ -359,28 +378,29 @@ class TrueCompressor2:
                                 T_inlet=comp_T_inlet,
                                 p_inlet=comp_p_inlet,
                                 rot_K=meanline_rotor_K[0], # take in mean deflection angle
-                                    stat_defl_ang=meanline_stator_K[0])) # how to get the whirl velocity between rotor and stator/?
+                                    stat_K=meanline_stator_K[0])) # how to get the whirl velocity between rotor and stator/?
 
                 elif s_num >=1: # for all other stages
-                    for rot_K, stat_K in zip(meanline_rotor_K, meanline_stator_K):
-                        stages.append(
-                            Stage_1D(v_inlet=stages[-1].v2,
-                                rpm=comp_rpm,
-                                    r=r,
-                                        T_inlet=stages[-1].T_outlet,
-                                            p_inlet=stages[-1].p_outlet,
-                                                rot_K=rot_K,
-                                                    stat_K=stat_K,
-                                                        s_inlet=stages[-1].s_outlet)
-                                                        )
+                    stages[s_num, r_num] = Stage_1D(v_inlet=stages[s_num-1, r_num].v2,
+                                                        rpm=comp_rpm,
+                                                            r=r,
+                                                                T_inlet=stages[s_num-1, r_num].T_outlet,
+                                                                    p_inlet=stages[s_num-1, r_num].p_outlet,
+                                                                        rot_K=meanline_rotor_K[s_num],
+                                                                            stat_K=meanline_stator_K[s_num],
+                                                                                s_inlet=stages[s_num-1, r_num].s_outlet)
                 else:
                     print(f'mald')
+        
+        # to pair up blading and radii, do np.stack((radii, blading), axis=-1)
+        print(f'{stages}')
+        self.blading = np.array([[stage.rot_defl_ang for stage in stages[j]] for j in range(len(stages))])
+        print(f'blading for the stages (rows are different radii and columns are different stages): \n{self.blading}]\n'
+              f'radii used for the calculation: {radii}')
     # TODO:         
     # return the blading curves (obtain the values)
     # calculate the updated areas based on the sums of the streamlines
     # record ALL of the streamline-stages rather than throwing them away after each streamline
-
-
 
 
 class PrelimCompressor:
@@ -402,8 +422,6 @@ class PrelimCompressor:
         
         # first stage dimensions
         inlet_area = np.pi*(inlet_tip_r**2 - inlet_hub_r**2)
-        hub_radii = [inlet_hub_r]
-        tip_radii = [inlet_tip_r]
 
         # do constant outer diameter
         hub_radius_from_area = lambda A: np.sqrt((-A+np.pi*tip_radii[0]**2)/np.pi) # assumes constant exterior
@@ -414,50 +432,57 @@ class PrelimCompressor:
         stages = []
         self.meanline_rotor_K = []
         self.meanline_stator_K = []
+        hub_radii = [inlet_hub_r]
+        tip_radii = [inlet_tip_r]
 
-        # special case - first stage
-        stages.append(Stage_1D(v_inlet=comp_v_inlet,
-                rpm=comp_rpm,
-                    r=0.5*(hub_radii[-1]+tip_radii[-1]),
-                    T_inlet=comp_T_inlet,
-                    p_inlet=comp_p_inlet,
-                        rot_defl_ang=rotor_defl_angles[0],
-                        stat_defl_ang=stator_defl_angles[0]))
-        self.meanline_rotor_K.append(stages[-1].rotor.rel_v_inlet * 0.5*(hub_radii[-1]+tip_radii[-1]))
-        self.meanline_stator_K.append(stages[-1].stator.rel_v_inlet * 0.5*(hub_radii[-1]+tip_radii[-1]))
+        # for all stages,
+        for s in range(len(rotor_defl_angles)):
+            rotor_defl_ang = rotor_defl_angles[0]
+            stator_defl_ang = stator_defl_angles[0]
 
-        rotor_defl_angles = rotor_defl_angles[1:]; stator_defl_angles = stator_defl_angles[1:] # removes first entry of deflection angles so the code works
-        
-        # area calcs for second stage
-        hub_radii.append(hub_radius_from_area(inlet_area*stages[-1].A_ratio))
-        tip_radii.append(tip_radii[0])
+            if s == 0:        # special case - first stage
+                stages.append(Stage_1D(v_inlet=comp_v_inlet,
+                        rpm=comp_rpm,
+                            r=0.5*(hub_radii[-1]+tip_radii[-1]),
+                            T_inlet=comp_T_inlet,
+                            p_inlet=comp_p_inlet,
+                                rot_defl_ang=rotor_defl_angles[0],
+                                stat_defl_ang=stator_defl_angles[0]))
+                hub_radii.append(hub_radius_from_area(inlet_area*stages[-1].A_ratio))
+                tip_radii.append(tip_radii[0]) # constant outer radius
 
-        # generate rest of the stages
-        for rotor_defl_ang, stator_defl_ang in zip(rotor_defl_angles, stator_defl_angles):
-            stages.append(
-                Stage_1D(v_inlet=stages[-1].v2,
-                    rpm=comp_rpm,
-                        r=0.5*(hub_radii[-1]+tip_radii[-1]),
-                            T_inlet=stages[-1].T_outlet,
-                                p_inlet=stages[-1].p_outlet,
-                                    rot_defl_ang=rotor_defl_ang,
-                                        stat_defl_ang=stator_defl_ang,
-                                            s_inlet=stages[-1].s_outlet)
-                                            )
+                # rotor_defl_angles = rotor_defl_angles[1:]; stator_defl_angles = stator_defl_angles[1:] # removes first entry of deflection angles so the code works
+            else: # for all other stages
+                # area calcs for second stage 
+                stages.append(
+                    Stage_1D(v_inlet=stages[-1].v2,
+                        rpm=comp_rpm,
+                            r=0.5*(hub_radii[-1]+tip_radii[-1]),
+                                T_inlet=stages[-1].T_outlet,
+                                    p_inlet=stages[-1].p_outlet,
+                                        rot_defl_ang=rotor_defl_ang,
+                                            stat_defl_ang=stator_defl_ang,
+                                                s_inlet=stages[-1].s_outlet)
+                                                )
+                hub_radii.append(hub_radius_from_area(np.pi*(tip_radii[-1]**2 - hub_radii[-1]**2)*stages[-1].A_ratio))
+                tip_radii.append(tip_radii[0])
+            
+            self.meanline_rotor_K.append((stages[-1].v_1_5_true[0]) * 0.5*(hub_radii[-1]+tip_radii[-1]))
+            self.meanline_stator_K.append(stages[-1].v2[0] * 0.5*(hub_radii[-1]+tip_radii[-1]))
+            print(f'whirl velocities that we are going for at the mean line: {stages[-1].v_1_5_true} and {stages[-1].v2}')
 
-            # area calcs for subsequent stage
-            hub_radii.append(hub_radius_from_area(np.pi*(tip_radii[-1]**2 - hub_radii[-1]**2)*stages[-1].A_ratio))
-            tip_radii.append(tip_radii[0])
-            self.meanline_rotor_K.append(stages[-1].rotor.rel_v_inlet * 0.5*(hub_radii[-1]+tip_radii[-1]))
-            self.meanline_stator_K.append(stages[-1].stator.rel_v_inlet * 0.5*(hub_radii[-1]+tip_radii[-1]))
 
-            self.stages = stages
-            self.hub_radii = hub_radii
-            self.tip_radii = tip_radii
+        # these need to be removed because that the area is always calculated based on the previous stage, generating an extra.
+        hub_radii.pop(-1); tip_radii.pop(-1)
+        # to do: remove these and put the tip angle on the diagrams.
+
+        self.stages = stages
+        self.hub_radii = hub_radii
+        self.tip_radii = tip_radii
 
         print(f'Cw*R = K = '
               f'\nfor the stator: {self.meanline_stator_K}'
-              f'\nfor the rotor: {self.meanline_stator_K}')
+              f'\nfor the rotor: {self.meanline_rotor_K}')
 
     def print_stats(self):
         # prinout stats and triangles
@@ -466,7 +491,7 @@ class PrelimCompressor:
             
             print(f'overall compressor stats:\n'
             f'total work: {sum([s.w for s in self.stages]):.2f} J \n'
-            f'pressure ratio: {self.stages[-1].p_outlet / self.stages[0].p_inlet} ({self.stages[0].p_inlet/1000:.2f} kPa --> {self.stages[-1].p_outlet/1000:.2f})\n'
+            f'pressure ratio: {self.stages[-1].p_outlet / self.stages[0].p_inlet} ({self.stages[0].p_outlet/1000:.2f} kPa --> {self.stages[-1].p_outlet/1000:.2f} kPa)\n'
             )
 
 
@@ -494,10 +519,9 @@ class PrelimCompressor:
         plt.clf()
 
 
-
-
-
-def main():
+def old_main():
+    meanline_rotor_defl_angles = -np.deg2rad(np.array([20, 18, 17, 16.5, 16.3]))
+    meanline_stator_defl_angles = -np.deg2rad(np.array([35, 35, 35, 35, 35]))
     c = PrelimCompressor(
         inlet_hub_r = 0.1,
         inlet_tip_r = 0.2,
@@ -505,14 +529,18 @@ def main():
         comp_T_inlet = 288.0,
         comp_p_inlet = 101325.0,
         comp_v_inlet = np.array([0.0, 250.0]),
-        rotor_defl_angles = np.deg2rad(np.array([-10 for i in range(5)])),
-        stator_defl_angles = np.deg2rad(np.array([-20 for i in range(5)])))
+        rotor_defl_angles = meanline_rotor_defl_angles,
+        stator_defl_angles = meanline_stator_defl_angles)
     c.print_stats()
     c.print_illustrations()
     c.print_triangles()    
     c.print_mollier_triangles()
 
-# program entry point
+
+def main():
+    c = TrueCompressor()
+
+
 if __name__ == "__main__":
     main()
 
