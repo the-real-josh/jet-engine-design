@@ -433,19 +433,31 @@ class TrueCompressor:
             print(radii)
             for r in range(len(self.radii[0])):
                 ax.add_patch(patches.Polygon([
-                                             (s/20,                                     radii[0]),
-                                             (s/20 + self.rotor_blading[s,r]/1000,      radii[0]),
-                                             (s/20 + self.rotor_blading[s,r]/1000,      radii[r+1]),
-                                             (s/20,                                     radii[r+1])]))
+                                             (1.5*s/20,                                     radii[0]),
+                                             (1.5*s/20 + self.rotor_blading[s,r]/1500,      radii[0]),
+                                             (1.5*s/20 + self.rotor_blading[s,r]/1500,      radii[r+1]),
+                                             (1.5*s/20,                                     radii[r+1])]))
                 ax.add_patch(patches.Polygon([
-                                             (s/20,                                     -radii[0]),
-                                             (s/20 + self.rotor_blading[s,r]/1000,      -radii[0]),
-                                             (s/20 + self.rotor_blading[s,r]/1000,      -radii[r+1]),
-                                             (s/20,                                     -radii[r+1])]))
+                                ((1.5*s+0.5)/20,                                     radii[0]),
+                                ((1.5*s+0.5)/20 + self.stator_blading[s,r]/1500,      radii[0]),
+                                ((1.5*s+0.5)/20 + self.stator_blading[s,r]/1500,      radii[r+1]),
+                                ((1.5*s+0.5)/20,                                     radii[r+1])]))
+                ax.add_patch(patches.Polygon([
+                                             (1.5*s/20,                                     -radii[0]),
+                                             (1.5*s/20 + self.rotor_blading[s,r]/1500,      -radii[0]),
+                                             (1.5*s/20 + self.rotor_blading[s,r]/1500,      -radii[r+1]),
+                                             (1.5*s/20,                                     -radii[r+1])]))
+                ax.add_patch(patches.Polygon([
+                                ((1.5*s+0.5)/20,                                     -radii[0]),
+                                ((1.5*s+0.5)/20 + self.stator_blading[s,r]/1500,      -radii[0]),
+                                ((1.5*s+0.5)/20 + self.stator_blading[s,r]/1500,      -radii[r+1]),
+                                ((1.5*s+0.5)/20,                                    -radii[r+1])]))
         m = max(self.tip_radii + [(0.05*(len(self.hub_radii)+1))])
         ax.set_xlim((0, 2*m))
         ax.set_ylim((-m, m))
-        plt.title(f'1D stages (in meters)')
+        plt.title(f'stages')
+        plt.xlabel(f'degrees of twist divided by 1500')
+        plt.ylabel(f'annulus size (meters)')
         plt.show()
         plt.clf()
         pass # stub - need to get area calculations first
@@ -579,6 +591,7 @@ def main():
     c = TrueCompressor()
     c.print_stats()
     c.make_accurate_illustrations()
+    c.plot_all_triangles()
 
 if __name__ == "__main__":
     main()
