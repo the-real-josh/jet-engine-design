@@ -1,7 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
-import math
+import pandas as pd
 
 # gas constants for air
 gamma = 1.4
@@ -201,7 +201,6 @@ class Stage_1D:
 
         if rot_defl_ang is None:
             rot_defl_ang = turning_angle(self.v_inlet, K/r, v_blade) # type: ignore
-            print(f'attempting to generate a whirl of {K/r} at radius {r} by making a turning angle of {np.rad2deg(rot_defl_ang)}')
         self.rot_defl_ang = rot_defl_ang
         self.rotor = V_triangle(v_inlet, v_blade, rot_defl_ang)
         v1_5_rel  = self.rotor.v_outlet #  << this is relative to the moving blade!!
@@ -213,13 +212,6 @@ class Stage_1D:
         self.stator = V_triangle(v1_5_rel, -v_blade, -stat_defl_ang)
         self.v_1_5_true = self.stator.rel_v_inlet # confirm with triangles to make sure this is really true
         self.v2 = self.stator.v_outlet
-
-        if (K is not None):
-            print(
-                f'mogus'
-            )
-        else:
-            print(f'meanline stage {self.instance_number} - radius is {r}')
 
         # euler's equation for turbomachinery - since the compressor q
         # specific work (energy per mass flow); 
@@ -272,14 +264,12 @@ class Stage_1D:
             self.s_inlet = s_inlet
         self.s_outlet =  cp*np.log(self.T_outlet/self.T_inlet) - R*np.log(self.p_outlet/self.p_inlet) + self.s_inlet        
 
-    def plot_triangles(self, noname=False):
+    def plot_triangles(self, name="", verbose=True):
         """Plots the two velocity triangles for the stage"""
-        if noname:
-            name = ""
-        else:
+        if name=="":
             name = self._inst_name()
-        self.rotor.plot(title=f'Velocity triangle: {name} rotor')
-        self.stator.plot(title=f'Velocity triangle: {name} stator')
+        self.rotor.plot(title=f'Velocity triangle: {name} rotor', verbose=verbose)
+        self.stator.plot(title=f'Velocity triangle: {name} stator', verbose=verbose)
 
     def _inst_name(self):
         # for var_name, var_val in globals().items():
@@ -341,43 +331,44 @@ class TrueCompressor:
         comp_v_inlet = np.array([0.0, 250.0])
 
 
-        meanline_rotor_defl_angles = -np.deg2rad(np.array([18, 18, 17, 16, 14]))
-        meanline_stator_defl_angles = -np.deg2rad(np.array([36.5, 37, 36.5, 36.5, 35]))
+        meanline_rot_defl_ang = -np.deg2rad(np.array([18, 18, 17, 16, 14]))
+        meanline_stat_defl_ang = -np.deg2rad(np.array([36.5, 37, 36.5, 36.5, 35]))
 
 
         # rudimentary minline calculations
-        c = PrelimCompressor(
+        self.my_prelim_comp = PrelimCompressor(
             inlet_hub_r = 0.1,
             inlet_tip_r = 0.2,
             comp_rpm = comp_rpm,
             comp_T_inlet = comp_T_inlet,
             comp_p_inlet = comp_p_inlet,
             comp_v_inlet = comp_v_inlet,
-            rotor_defl_angles = meanline_rotor_defl_angles,
-            stator_defl_angles = meanline_stator_defl_angles)
-        c.print_stats()
-        c.print_illustrations()
-        # c.print_triangles()    
-        # c.print_mollier_triangles()
+            rotor_defl_angles = meanline_rot_defl_ang,
+            stator_defl_angles = meanline_stat_defl_ang)
+        
+        self.my_prelim_comp.print_stats()
+        self.my_prelim_comp.print_illustrations()
+        # self.my_prelim_comp.print_triangles()    
+        # self.my_prelim_comp.print_mollier_triangles()
 
         # get the mean radius of each of the stages to generate good streamlines
-        hub_radii = c.hub_radii
-        tip_radii = c.tip_radii
+        self.hub_radii = self.my_prelim_comp.hub_radii
+        self.tip_radii = self.my_prelim_comp.tip_radii
 
-        # get the constant C_w * R = K from the minline calcs!!
-        meanline_K = c.meanline_K 
+        # get the constant K = C_w * R from the minline calcs!!
+        meanline_K = self.my_prelim_comp.meanline_K 
 
         # generate some streamlines
         def streamlines_r(n, rmin=0.1, rmax=0.2):
             """ Get a number of streamlines evenly distributed throughout the span of the blade."""
             return np.convolve(np.linspace(rmin, rmax, num=n+1), np.ones(2), 'valid') / 2
 
-        radii = np.array([streamlines_r(3, rmin=hub_r, rmax=tip_r) for hub_r, tip_r in zip(hub_radii, tip_radii)]) # generates a (ndarray) list(len=num of stages, ) of lists streamlines 
+        radii = np.array([streamlines_r(3, rmin=hub_r, rmax=tip_r) for hub_r, tip_r in zip(self.hub_radii, self.tip_radii)]) # generates a (ndarray) list(len=num of stages, ) of lists streamlines 
         
         stages = np.array([[None for i in range(len(radii[0]))] for j in range(len(radii))], dtype=object)
 
         # re-generate stages with blading
-        for s_num in range(len(meanline_rotor_defl_angles)): # for every stage
+        for s_num in range(len(meanline_rot_defl_ang)): # for every stage
 
 
             for r_num in range(len(radii[0])):
@@ -402,19 +393,65 @@ class TrueCompressor:
                 else:
                     print(f'mald')
         
-                stages[s_num, r_num].plot_triangles(noname=True)
-        # to pair up blading and radii, do np.stack((radii, blading), axis=-1)
-        print(f'{stages}')
-        self.rotor_blading = np.rad2deg(np.array([[stage.rot_defl_ang for stage in stages[j]] for j in range(len(stages))]))
-        self.stator_blading = np.rad2deg(np.array([[stage.stat_defl_ang for stage in stages[j]] for j in range(len(stages))]))
+        # refined areas calculations
+        # necessary?
 
-        print(f'rotorblading for the stages (rows are different radii and columns are different stages): \n{self.rotor_blading}]\n'
-              f'stator blading: {self.stator_blading}\n'
-              f'radii used for the calculation: {radii}')
+        # backing out final numbers
+        self.stages = stages
+        self.radii = radii
+        self.rotor_blading = -np.rad2deg(np.array([[stage.rot_defl_ang for stage in stages[j]] for j in range(len(stages))]))
+        self.stator_blading = -np.rad2deg(np.array([[stage.stat_defl_ang for stage in stages[j]] for j in range(len(stages))]))
+
+    def plot_all_triangles(self, verbose=False):
+        for s_num in range(len(self.stages)):
+            for r_num in range(len(self.stages[0])):
+                self.stages[s_num, r_num].plot_triangles(name=" ", verbose=verbose)
+    # to pair up blading and radii, do np.stack((radii, blading), axis=-1)
+
+    def print_stats(self):
+        prelim_results = self.my_prelim_comp.print_stats(verbose=False)
+        for s in range(len(self.rotor_blading)):
+            print(f'\n===  stats for『 stage {s+1} 』  ===')
+            print('\n'.join(prelim_results["by_stage"][s][1:]))
+            for r in range(len(self.rotor_blading[0])):
+                print(f'r={self.radii[s, r]:.2f}) \trotor deflection={self.rotor_blading[s, r]:.2f}° | Stator deflection={self.stator_blading[s, r]:.2f}°')
+        print(f'\n{prelim_results["overall"]}')
+
+
+    def export_pandas(self):
+        pass # stub
+
+
+    def make_accurate_illustrations(self):
+
+        # 1D stage illustrations
+        fig, ax = plt.subplots()
+        for s in range(len(self.hub_radii)):
+            # radii = np.concatenate((np.array([self.hub_radii[s]]), np.array(self.radii[s, :]), np.array([self.tip_radii[s]])))
+            # radii = np.convolve(radii, np.ones(2), 'valid') / 2
+            radii = np.linspace(self.hub_radii[s], self.tip_radii[s], num=len(self.radii[0])+1)
+            print(radii)
+            for r in range(len(self.radii[0])):
+                ax.add_patch(patches.Polygon([
+                                             (s/20,                                     radii[0]),
+                                             (s/20 + self.rotor_blading[s,r]/1000,      radii[0]),
+                                             (s/20 + self.rotor_blading[s,r]/1000,      radii[r+1]),
+                                             (s/20,                                     radii[r+1])]))
+                ax.add_patch(patches.Polygon([
+                                             (s/20,                                     -radii[0]),
+                                             (s/20 + self.rotor_blading[s,r]/1000,      -radii[0]),
+                                             (s/20 + self.rotor_blading[s,r]/1000,      -radii[r+1]),
+                                             (s/20,                                     -radii[r+1])]))
+        m = max(self.tip_radii + [(0.05*(len(self.hub_radii)+1))])
+        ax.set_xlim((0, 2*m))
+        ax.set_ylim((-m, m))
+        plt.title(f'1D stages (in meters)')
+        plt.show()
+        plt.clf()
+        pass # stub - need to get area calculations first
+
     # TODO:         
-    # return the blading curves (obtain the values)
     # calculate the updated areas based on the sums of the streamlines
-    # record ALL of the streamline-stages rather than throwing them away after each streamline
 
 
 class PrelimCompressor:
@@ -497,16 +534,21 @@ class PrelimCompressor:
               f'\nfor the meanline: {self.meanline_K}'
               )
 
-    def print_stats(self):
+    def print_stats(self, verbose=True):
         # prinout stats and triangles
+        by_stage_data = []
         for stage in self.stages:
-            stage.print_stats()
-            
-            print(f'overall compressor stats:\n'
-            f'total work: {sum([s.w for s in self.stages]):.2f} J \n'
-            f'pressure ratio: {self.stages[-1].p_outlet / self.stages[0].p_inlet} ({self.stages[0].p_outlet/1000:.2f} kPa --> {self.stages[-1].p_outlet/1000:.2f} kPa)\n'
-            )
+            by_stage_data.append(stage.print_stats(verbose=verbose))
+        
+        msg = '\n'.join([f'===  overall compressor stats  ===',
+        f'total work: {sum([s.w for s in self.stages]):.2f} J',
+        f'pressure ratio: {self.stages[-1].p_outlet / self.stages[0].p_inlet:.2f} ({self.stages[0].p_outlet/1000:.2f} kPa --> {self.stages[-1].p_outlet/1000:.2f} kPa)'])
+        if verbose:
+            print(msg)
 
+        return {"by_stage": by_stage_data,
+                "overall": msg}
+    
 
     def print_triangles(self):
         for stage in self.stages:
@@ -532,27 +574,11 @@ class PrelimCompressor:
         plt.clf()
 
 
-def old_main():
-    meanline_rotor_defl_angles = -np.deg2rad(np.array([20, 18, 17, 16.5, 16.3]))
-    meanline_stator_defl_angles = -np.deg2rad(np.array([35, 35, 35, 35, 35]))
-    c = PrelimCompressor(
-        inlet_hub_r = 0.1,
-        inlet_tip_r = 0.2,
-        comp_rpm = 25650.0,
-        comp_T_inlet = 288.0,
-        comp_p_inlet = 101325.0,
-        comp_v_inlet = np.array([0.0, 250.0]),
-        rotor_defl_angles = meanline_rotor_defl_angles,
-        stator_defl_angles = meanline_stator_defl_angles)
-    c.print_stats()
-    c.print_illustrations()
-    c.print_triangles()    
-    c.print_mollier_triangles()
-
 
 def main():
     c = TrueCompressor()
-
+    c.print_stats()
+    c.make_accurate_illustrations()
 
 if __name__ == "__main__":
     main()
