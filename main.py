@@ -346,10 +346,10 @@ class TrueCompressor:
             rotor_defl_angles = meanline_rot_defl_ang,
             stator_defl_angles = meanline_stat_defl_ang)
         
-        self.my_prelim_comp.print_stats()
-        self.my_prelim_comp.print_illustrations()
+        # self.my_prelim_comp.print_stats()
+        # self.my_prelim_comp.print_illustrations()
         # self.my_prelim_comp.print_triangles()    
-        # self.my_prelim_comp.print_mollier_triangles()
+        self.my_prelim_comp.print_mollier_triangles()
 
         # get the mean radius of each of the stages to generate good streamlines
         self.hub_radii = self.my_prelim_comp.hub_radii
@@ -401,6 +401,7 @@ class TrueCompressor:
         self.radii = radii
         self.rotor_blading = -np.rad2deg(np.array([[stage.rot_defl_ang for stage in stages[j]] for j in range(len(stages))]))
         self.stator_blading = -np.rad2deg(np.array([[stage.stat_defl_ang for stage in stages[j]] for j in range(len(stages))]))
+        self.DRXN = np.array([[stage.DRXN for stage in stages[j]] for j in range(len(stages))])
 
     def plot_all_triangles(self, verbose=False):
         for s_num in range(len(self.stages)):
@@ -411,10 +412,14 @@ class TrueCompressor:
     def print_stats(self):
         prelim_results = self.my_prelim_comp.print_stats(verbose=False)
         for s in range(len(self.rotor_blading)):
-            print(f'\n===  stats for『 stage {s+1} 』  ===')
+            print(f'\n\n===  stats for『 stage {s+1} 』  ===')
             print('\n'.join(prelim_results["by_stage"][s][1:]))
+            print(f'different radial positions: \n')
             for r in range(len(self.rotor_blading[0])):
-                print(f'r={self.radii[s, r]:.2f}) \trotor deflection={self.rotor_blading[s, r]:.2f}° | Stator deflection={self.stator_blading[s, r]:.2f}°')
+                print(f'radial location={self.radii[s, r]:.2f}\n'
+                      f'rotor deflection={self.rotor_blading[s, r]:.2f}°\n'
+                      f'Stator deflection={self.stator_blading[s, r]:.2f}°\n'
+                      F'Degree of Reaction={self.DRXN[s, r]:.2f}\n')
         print(f'\n{prelim_results["overall"]}')
 
 
@@ -554,7 +559,7 @@ class PrelimCompressor:
         
         msg = '\n'.join([f'===  overall compressor stats  ===',
         f'total work: {sum([s.w for s in self.stages]):.2f} J',
-        f'pressure ratio: {self.stages[-1].p_outlet / self.stages[0].p_inlet:.2f} ({self.stages[0].p_outlet/1000:.2f} kPa --> {self.stages[-1].p_outlet/1000:.2f} kPa)'])
+        f'pressure ratio: {self.stages[-1].p_outlet / self.stages[0].p_inlet:.2f} ({self.stages[0].p_inlet/1000:.2f} kPa --> {self.stages[-1].p_outlet/1000:.2f} kPa)'])
         if verbose:
             print(msg)
 

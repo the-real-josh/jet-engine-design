@@ -10,7 +10,7 @@ rho_infty = 1.22500 # kg/m3
 m_desired = 20 # desired mass flow, kg/sec
 
 # need to pin down: hub to tip ratio
-hub_tip_ratio = 0.5 # about average, idk
+hub_tip_ratio = 0.4 # about average, idk
 r_tip = np.sqrt(m_desired * (np.pi*rho_infty*C_a*(1-hub_tip_ratio**2))**(-1))
 r_hub = r_tip*hub_tip_ratio
 print(f'radius of the tip: {r_tip}'
